@@ -1,0 +1,74 @@
+# Listes : listes à cocher partagées, en temps réel. Un binaire Go, une base SQLite.
+# Le conteneur n'écoute que sur 127.0.0.1 : place un reverse proxy HTTPS devant (voir README).
+#   cp .env.example .env && chmod 600 .env    # puis renseigne LISTES_ORIGIN
+#   docker compose up -d --build
+#   docker compose exec listes listes user add <nom>
+
+name: listes
+
+services:
+  listes:
+    container_name: listes
+    build: .
+    image: listes:local
+    restart: always
+    # Propriétaire du dossier de données sur l'hôte (1000:1000 par défaut).
+    user: "${LISTES_UID:-1000}:${LISTES_GID:-1000}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Système de fichiers en lecture seule : seules les données (/data) sont modifiables.
+    # Pas de tmpfs : SQLite garde ses fichiers temporaires en mémoire (temp_store).
+    read_only: true
+    cpus: ${LISTES_CPUS:-1}
+    mem_limit: 128m
+    # Une boucle ou une fuite ne peut pas épuiser les processus ni les descripteurs de
+    # l'hôte. Au repos : ~10 threads ; flux SSE plafonnés à 64.
+    pids_limit: 64
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+    # Journaux bornés (30 Mo au plus) : une avalanche de requêtes ne remplit pas le disque.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - '127.0.0.1:${LISTES_PORT:-5240}:5240'
+    volumes:
+      - ${LISTES_DATA_LOCATION:-./data}:/data
+    networks:
+      - listes
+    environment:
+      LISTES_DB: /data/listes.db
+      # URL publique de l'appli : seule origine acceptée pour les requêtes qui modifient (CSRF).
+      LISTES_ORIGIN: ${LISTES_ORIGIN:?LISTES_ORIGIN est obligatoire (voir .env.example)}
+      # IP client pour la limite de tentatives de connexion : le reverse proxy pose
+      # X-Forwarded-For, et le port publié arrive dans le conteneur par la passerelle du
+      # réseau `listes`. L'appli ne lit cet en-tête que depuis 127.0.0.1 et cette passerelle.
+      LISTES_TRUSTED_PROXIES: 172.29.52.1
+      TZ: ${TZ:-Europe/Paris}
+      # Le ramasse-miettes de Go se resserre avant la limite du conteneur.
+      GOMEMLIMIT: 96MiB
+    healthcheck:
+      # Pas de shell ni de wget dans l'image : sous-commande du binaire.
+      test: ["CMD", "listes", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  listes:
+    # Sous-réseau et nom d'interface fixes : la passerelle est la valeur de
+    # LISTES_TRUSTED_PROXIES, et contrib/listes-egress.service bloque les sorties de ce
+    # réseau. Si ce sous-réseau est déjà pris sur ton hôte (`docker network ls`), change-le
+    # aux trois endroits.
+    driver_opts:
+      com.docker.network.bridge.name: br-listes
+    ipam:
+      config:
+        - subnet: 172.29.52.0/24
+          gateway: 172.29.52.1

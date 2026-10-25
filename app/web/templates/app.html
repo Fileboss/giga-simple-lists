@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Listes</title>
+<meta name="csrf-token" content="{{.CSRF}}">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Listes">
+<meta name="theme-color" content="#fbfaf7">
+<script src="/static/app.js" defer></script>
+</head>
+<body data-me="{{.UserID}}" data-name="{{.Name}}">
+<header class="bar">
+  <button id="tabs-prev" class="tabs-nav" type="button" aria-label="Listes précédentes" hidden>‹</button>
+  <nav id="tabs" class="tabs" aria-label="Listes"></nav>
+  <button id="tabs-next" class="tabs-nav" type="button" aria-label="Listes suivantes" hidden>›</button>
+  <button id="new-list" class="new-list" type="button" aria-label="Nouvelle liste">+</button>
+</header>
+
+<div class="notices">
+  <p id="toast" class="toast" role="status" hidden></p>
+  <p id="offline" class="offline" role="status" hidden>Hors ligne · envoi au retour du réseau</p>
+</div>
+
+<main id="list" class="list" hidden>
+  <div class="list-head">
+    <input id="title" class="title" maxlength="80" aria-label="Nom de la liste" autocomplete="off" enterkeyhint="done">
+    <label class="share"><input id="share" type="checkbox"> Partager</label>
+  </div>
+  <p id="owner-note" class="owner-note" hidden></p>
+
+  <form id="add" class="add" autocomplete="off">
+    <input id="new-item" maxlength="500" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done">
+    <button id="add-btn" type="submit" class="add-btn">Ajouter</button>
+  </form>
+
+  <ul id="items" class="items"></ul>
+
+  <div class="list-foot">
+    <button id="clear-checked" type="button">Retirer les cochés</button>
+
+    <div id="owner-tools" class="owner-tools">
+      <fieldset class="colors">
+        <legend>Couleur</legend>
+        {{range .Colors}}<label class="swatch c-{{.Key}}"><input type="radio" name="color" value="{{.Key}}" aria-label="{{.Label}}"></label>{{end}}
+      </fieldset>
+
+      <button id="delete" type="button" class="danger">Supprimer la liste…</button>
+      <div id="confirm-delete" class="confirm" hidden>
+        <p id="confirm-text"></p>
+        <button id="delete-yes" type="button" class="danger">Supprimer</button>
+        <button id="delete-no" type="button">Annuler</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<p id="empty" class="empty" hidden>Aucune liste. Crée la première avec le bouton +.</p>
+
+<footer class="foot">
+  <span>{{.Name}}</span>
+  <form method="post" action="/logout">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="link">Se déconnecter</button>
+  </form>
+</footer>
+</body>
+</html>

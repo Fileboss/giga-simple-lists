@@ -1,0 +1,6 @@
+PROMPT.md
+# Intégration propre à un déploiement particulier : hors du dépôt.
+infra/
+# Données et configuration locales.
+.env
+data/

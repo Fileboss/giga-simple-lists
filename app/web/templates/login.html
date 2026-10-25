@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Listes · connexion</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Listes">
+<meta name="theme-color" content="#fbfaf7">
+</head>
+<body class="login">
+<main class="login-box">
+  <h1>Listes</h1>
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Nom
+      <input name="name" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
+    </label>
+    <label>Mot de passe
+      <input name="password" type="password" autocomplete="current-password" required maxlength="1024">
+    </label>
+    <button type="submit">Se connecter</button>
+  </form>
+</main>
+</body>
+</html>

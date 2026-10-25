@@ -1,0 +1,25 @@
+# Listes : aucune connexion sortante depuis le réseau Docker de l'appli (172.29.52.0/24).
+# Si l'appli est compromise, elle ne joint ni Internet, ni le réseau local, ni les autres
+# conteneurs (FORWARD, chaîne DOCKER-USER), ni les services de l'hôte lui-même (INPUT :
+# DOCKER-USER ne voit pas le trafic destiné à l'hôte). Les connexions entrantes et leurs
+# réponses (ESTABLISHED) passent. Idempotent. PartOf : relancée à chaque redémarrage de Docker.
+#   sudo install -m 644 contrib/listes-egress.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now listes-egress.service
+# Si tu changes le sous-réseau dans docker-compose.yml, change aussi SUBNET ci-dessous.
+[Unit]
+Description=Listes : bloque toute connexion sortante du réseau Docker listes
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=SUBNET=172.29.52.0/24
+ExecStart=/bin/sh -c 'for c in DOCKER-USER INPUT; do \
+  iptables -C "$$c" -s "$SUBNET" -m conntrack --ctstate NEW -j REJECT 2>/dev/null || \
+  iptables -I "$$c" 1 -s "$SUBNET" -m conntrack --ctstate NEW -j REJECT; done'
+ExecStop=/bin/sh -c 'for c in DOCKER-USER INPUT; do \
+  while iptables -D "$$c" -s "$SUBNET" -m conntrack --ctstate NEW -j REJECT 2>/dev/null; do :; done; done'
+
+[Install]
+WantedBy=docker.service

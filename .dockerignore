@@ -1,0 +1,3 @@
+*
+!app/
+app/*_test.go

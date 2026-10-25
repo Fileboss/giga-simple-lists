@@ -1,0 +1,17 @@
+# Mises à jour hebdomadaires : digests des images de base (golang, distroless),
+# dépendances Go et actions GitHub. Chaque mise à jour fusionnée donne un nouveau tag
+# (v1.0.1…) à déployer.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /app
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,393 @@
+/* Listes : minimaliste et calme. Papier clair, pastels très doux, traits fins,
+   beaucoup d'air. Polices du système uniquement : sans-serif arrondie quand elle
+   existe (Apple), serif pour les titres. Cibles tactiles ≥ 44 px. */
+:root {
+  --paper: #fbfaf7;
+  --ink: #2e2e2c;        /* texte : ≥ 7:1 sur toutes les couleurs (colors.go) */
+  --muted: #62625d;      /* éléments cochés, textes secondaires : ≥ 4,5:1 */
+  --faint: #9a9a94;      /* bouton −, repères */
+  --line: rgba(46, 46, 44, .09);
+  --accent: #6f8069;     /* sauge foncée : coches, focus */
+  --accent-strong: #5b6b56; /* fond du bouton Ajouter : texte clair ≥ 4,5:1 */
+  --danger: #9b4a3f;
+  --sans: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --serif: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif", serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font: 400 17px/1.5 var(--sans);
+  letter-spacing: .01em;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color .2s, color .2s;
+}
+button:hover { background-color: rgba(46, 46, 44, .04); }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::placeholder { color: var(--faint); opacity: 1; }
+
+/* Barre des listes : défile horizontalement sur mobile. */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 12px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--paper);
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  container-type: inline-size;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs::-webkit-scrollbar { display: none; }
+/* Fondu sur le bord où d'autres onglets attendent : on devine qu'on peut faire défiler. */
+.tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tabs.more-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.tabs.more-left.more-right {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+.tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+.tab[aria-current="true"] { color: var(--ink); background: rgba(46, 46, 44, .06); }
+/* Nom tronqué selon la largeur réelle de la barre : un onglet tient toujours en entier,
+   « · de <nom> » et la marque de partage restent visibles. */
+.tab .name { max-width: 11em; max-width: min(11em, 38cqw); overflow: hidden; text-overflow: ellipsis; }
+.tab .dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(46, 46, 44, .18);
+}
+.tab .from { color: var(--faint); }
+.tab .mark { color: var(--faint); font-size: 14px; }
+/* Flèches de défilement : seulement avec une souris (au doigt, on fait glisser la barre). */
+.tabs-nav {
+  display: none;
+  flex: none;
+  width: 32px;
+  padding: 0;
+  border: 0;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tabs-nav:not([hidden]) { display: block; }
+}
+.new-list {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  font-size: 22px;
+  font-weight: 300;
+  color: var(--muted);
+}
+
+/* En surimpression, en bas : ne décale jamais la liste (pas de clic au mauvais endroit).
+   Message et bandeau hors ligne s'empilent, sans jamais se recouvrir. */
+.notices {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: max(56px, calc(env(safe-area-inset-bottom) + 48px));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.offline, .toast {
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
+  color: var(--paper);
+  background: rgba(46, 46, 44, .88);
+}
+
+/* Liste */
+.list { position: relative; flex: 1; padding: 20px 20px 32px; transition: background-color .3s; }
+.list-head { display: flex; gap: 8px; align-items: center; }
+.title {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px 0;
+  font: 400 28px/1.2 var(--serif);
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+}
+.title:focus { outline: none; border-bottom-color: var(--line); }
+.share {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.owner-note { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+
+/* Cases à cocher carrées, coins à peine adoucis, traits fins. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: 1.5px solid var(--faint);
+  border-radius: 5px;
+  background: transparent center / 14px no-repeat;
+  cursor: pointer;
+  transition: background-color .2s, border-color .2s;
+}
+input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  background-image: url("/static/check.svg");
+}
+input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
+.share input { width: 20px; height: 20px; }
+
+.add { position: relative; display: flex; align-items: center; margin: 16px 0 8px; }
+.add input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.add input:focus { outline: none; border-bottom-color: var(--accent); }
+.add.has-text input { padding-right: 104px; }
+/* Valider la saisie sans clavier physique : n'apparaît qu'avec du texte. */
+.add-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  margin-top: 0;
+  transform: translateY(-50%);
+  color: var(--paper);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+}
+.add-btn:hover { background-color: #4f5e4b; }
+.add.has-text .add-btn { opacity: 1; visibility: visible; }
+
+.items { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0; }
+/* Où va atterrir la ligne déplacée : un simple aplat plus sombre, sous les lignes. */
+.drop-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 10px;
+  background: rgba(46, 46, 44, .07);
+  pointer-events: none;
+  transition: transform .2s cubic-bezier(.2, .8, .2, 1);
+}
+.drop-slot.instant { transition: none; }
+/* Contrôles centrés verticalement, quel que soit le nombre de lignes du texte (1 à 3). */
+.item {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+  transition: box-shadow .2s, background-color .2s, border-color .2s;
+}
+.check { display: flex; align-items: center; justify-content: center; width: 40px; min-height: 44px; flex: none; cursor: pointer; }
+/* Poignée de déplacement : 2 × 3 points discrets. */
+.handle {
+  flex: none;
+  width: 32px;
+  height: 44px;
+  margin-left: -10px;
+  padding: 13px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: radial-gradient(circle, var(--faint) 1.3px, transparent 1.7px) 0 0 / 6px 6px repeat content-box;
+  touch-action: none;
+  cursor: grab;
+  opacity: .7;
+}
+.handle:hover { background-color: transparent; opacity: 1; }
+.is-dragging, .is-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.item.dragging {
+  position: relative;
+  border-radius: 10px;
+  z-index: 2;
+  border-bottom-color: transparent;
+  background-color: #fffdf8;
+  box-shadow: 0 12px 28px rgba(46, 46, 44, .16), 0 2px 6px rgba(46, 46, 44, .08);
+}
+.item.dragging .handle { opacity: 1; }
+.text {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: calc(4.5em + 18px); /* 3 lignes au plus ; au-delà, défilement à l'édition */
+  max-height: calc(3lh + 18px);
+  padding: 9px 2px;
+  border: 0;
+  background: transparent;
+  resize: none;
+  overflow-y: hidden;
+  field-sizing: content;
+  overflow-wrap: anywhere;
+}
+.text:focus { overflow-y: auto; }
+/* Plus de 3 lignes : la dernière s'estompe, le reste apparaît en touchant le texte. */
+.text.clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 9px));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 9px));
+}
+.text:focus { outline: none; }
+.item:focus-within { border-bottom-color: rgba(46, 46, 44, .22); }
+.item.done .text { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(46, 46, 44, .3); }
+.remove {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--faint);
+}
+.remove:hover, .remove:focus-visible { color: var(--danger); background: transparent; }
+
+.list-foot { margin-top: 28px; display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
+.list-foot button { font-size: 15px; color: var(--muted); }
+.owner-tools { display: flex; flex-direction: column; gap: 28px; align-items: flex-start; }
+/* Pastilles : zone tactile de 44 px, rond visible de 32 px. 4 × 2 sur téléphone, 8 en ligne sinon. */
+.colors { display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; margin: 0; padding: 0; border: 0; }
+@media (min-width: 440px) { .colors { grid-template-columns: repeat(8, 44px); } }
+.colors legend { padding: 0; margin-bottom: 10px; font-size: 14px; color: var(--muted); }
+.swatch {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  border-radius: 50%;
+  background-clip: content-box;
+  cursor: pointer;
+}
+.swatch::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgba(46, 46, 44, .16);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: box-shadow .2s;
+}
+.swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.swatch:has(input:checked)::after { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--accent); }
+.swatch:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 0; }
+.list-foot .danger, .danger { color: var(--danger); }
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.confirm p { width: 100%; margin: 0 0 4px; font-size: 15px; }
+.list-foot .confirm .danger { color: var(--paper); background: var(--danger); border-color: var(--danger); }
+
+.empty { flex: 1; padding: 64px 24px; text-align: center; color: var(--muted); font-family: var(--serif); font-size: 19px; }
+.foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 16px;
+  padding-bottom: max(4px, env(safe-area-inset-bottom));
+  font-size: 14px;
+  color: var(--faint);
+}
+.foot form { margin: 0; }
+.link { border: 0; padding: 0 8px; color: var(--faint); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Couleurs de fond (colors.go) : pastels très doux, texte ≥ 7:1. */
+.c-jaune { background-color: #faf3dc; }
+.c-peche { background-color: #fbe9df; }
+.c-rose { background-color: #f8e6ea; }
+.c-lavande { background-color: #ece9f6; }
+.c-bleu { background-color: #e5eef6; }
+.c-menthe { background-color: #e3f2ea; }
+.c-sauge { background-color: #ebf0e1; }
+.c-gris { background-color: #efefec; }
+
+/* Connexion */
+.login { justify-content: center; align-items: center; }
+.login-box { width: min(100% - 48px, 340px); }
+.login-box h1 { margin: 0 0 32px; font: 400 34px/1.2 var(--serif); text-align: center; }
+.login-box form { display: flex; flex-direction: column; gap: 20px; }
+.login-box label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+.login-box input {
+  min-height: 44px;
+  padding: 6px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: 17px;
+  color: var(--ink);
+}
+.login-box input:focus { outline: none; border-bottom-color: var(--accent); }
+.login-box button { margin-top: 12px; color: var(--paper); background: var(--ink); border-color: var(--ink); }
+.error { margin: 0 0 20px; font-size: 15px; text-align: center; color: var(--danger); }
+
+@media (min-width: 700px) {
+  .bar { padding-left: 24px; padding-right: 24px; }
+  .list { margin: 16px auto; width: 100%; max-width: 640px; border-radius: 20px; padding: 32px 36px 40px; }
+}
