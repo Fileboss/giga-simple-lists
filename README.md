@@ -4,29 +4,27 @@ Des listes à cocher, partagées en temps réel, à auto-héberger. Courses, cho
 projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujours modifiable.
 
 - Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
-  rend visible et modifiable par tous les comptes de l'instance.
+  rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
+  éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
+- Éléments réordonnables par glisser-déposer ; « Vider les cochés » retire d'un coup les éléments cochés.
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
-- Hors ligne : les actions faites sans réseau sont renvoyées au retour de la connexion.
+- Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
+  sans réseau sont renvoyées au retour de la connexion.
 - Appli web installable sur l'écran d'accueil (iOS, Android), interface en français.
-- Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image de 17 Mo.
+- Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo.
 
-## Installer
+## Déploiement
 
-Il faut Docker avec Compose, et un reverse proxy qui sert l'appli en HTTPS (les cookies de session
-sont `Secure`).
+La CI publie l'image `ghcr.io/fileboss/giga-simple-lists` (amd64) : chaque tag `vX.Y.Z` donne
+`:vX.Y.Z` et `:X.Y.Z`, les versions à épingler ; `main` donne `:latest` et `:sha-…`, pour le dev
+seulement. Ce dépôt ne fournit que l'image : son `compose.yaml` ne sert qu'au dev local.
 
-```sh
-git clone https://github.com/Fileboss/giga-simple-lists.git && cd giga-simple-lists
-git checkout v1.0.0                       # dernière version taguée
-cp .env.example .env && chmod 600 .env    # renseigne LISTES_ORIGIN (URL publique)
-install -d -o 1000 -g 1000 data           # propriétaire = LISTES_UID:LISTES_GID
-docker compose up -d --build
-docker compose ps                         # listes : healthy
-```
+Contrat du conteneur : uid 1000, base `/data/listes.db` (un seul fichier SQLite, à sauvegarder avec
+`sqlite3 .backup`), port 5240, `GET /healthz` (healthcheck intégré à l'image), `LISTES_ORIGIN`
+obligatoire. Il faut un reverse proxy qui sert l'appli en HTTPS : les cookies de session sont
+`Secure`. Les migrations de la base sont intégrées au binaire et s'appliquent au démarrage.
 
-Le conteneur n'écoute que sur `127.0.0.1:5240`.
-
-### Comptes
+## Comptes
 
 Il n'y a pas d'inscription en ligne : les comptes se gèrent en ligne de commande.
 
@@ -38,7 +36,7 @@ docker compose exec listes listes user list
 docker compose exec listes listes sessions revoke-all  # déconnecte tous les appareils
 ```
 
-### Reverse proxy
+## Reverse proxy
 
 L'appli doit être servie à l'adresse exacte de `LISTES_ORIGIN`. Le reverse proxy doit :
 
@@ -80,52 +78,27 @@ Si le reverse proxy tourne sur une autre machine (par un tunnel ou un VPN), il f
 le port `127.0.0.1:5240` de l'hôte de l'appli par un relais local, et que personne d'autre ne puisse
 joindre ce relais : toute connexion qui arrive par là est crue sur son `X-Forwarded-For`.
 
-### Isolation réseau (recommandé)
-
-L'appli n'a besoin d'aucune connexion sortante. `contrib/listes-egress.service` l'interdit au niveau
-de l'hôte : si l'appli était compromise, elle ne pourrait joindre ni Internet, ni le réseau local,
-ni les autres conteneurs, ni les services de l'hôte.
-
-```sh
-sudo install -m 644 contrib/listes-egress.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now listes-egress.service
-# Vérification : depuis le réseau de l'appli, tout doit échouer.
-docker run --rm --network listes_listes busybox wget -T 3 -qO- http://1.1.1.1 ; echo "code $?"
-```
-
-### Sauvegarde
-
-La base est un seul fichier SQLite. Copie-la à chaud avec `sqlite3 .backup`, jamais par simple
-copie de fichier, sous l'uid propriétaire pour ne pas créer de fichiers que l'appli ne pourrait plus
-ouvrir :
-
-```sh
-sudo setpriv --reuid=1000 --regid=1000 --clear-groups \
-  sqlite3 data/listes.db ".timeout 30000" ".backup '/chemin/sauvegarde/listes.db'"
-```
-
-Pour restaurer : arrêter l'appli, remplacer `data/listes.db` (et supprimer `listes.db-wal` et
-`listes.db-shm`), redémarrer.
-
-### Mettre à jour
-
-```sh
-git fetch --tags && git checkout vX.Y.Z
-docker compose build --pull && docker compose up -d
-```
-
-Les migrations de la base sont intégrées au binaire et s'appliquent au démarrage. Fais une
-sauvegarde juste avant.
-
 ## Configuration
 
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `LISTES_ORIGIN` | (obligatoire) | URL publique ; seule origine acceptée pour les requêtes qui modifient |
-| `LISTES_DATA_LOCATION` | `./data` | dossier de la base sur l'hôte |
-| `LISTES_UID`, `LISTES_GID` | `1000` | utilisateur du conteneur, propriétaire du dossier de données |
-| `LISTES_PORT` | `5240` | port publié sur `127.0.0.1` |
-| `LISTES_TRUSTED_PROXIES` | passerelle du réseau `listes` | IP dont `X-Forwarded-For` est lu, en plus de `127.0.0.1` |
+| `LISTES_TRUSTED_PROXIES` | (aucune) | IP, séparées par des virgules, dont `X-Forwarded-For` est lu, en plus de `127.0.0.1` : la passerelle du réseau Docker par laquelle arrive le port publié |
+| `LISTES_DB` | `/data/listes.db` | chemin de la base |
+| `LISTES_ADDR` | `:5240` | adresse d'écoute |
+| `TZ` | (UTC) | fuseau horaire (horodatage des journaux) |
+| `GOMEMLIMIT` | (aucune) | à régler sous la limite mémoire du conteneur (ex. `96MiB` pour 128 Mo) |
+
+### Limites
+
+| | |
+|---|---|
+| Listes par compte | 200 |
+| Éléments par liste | 2 000 |
+| Texte d'un élément / nom de liste | 500 / 80 caractères |
+| Flux temps réel ouverts | 64 au total, 4 par session |
+| Sessions | 90 jours sans visite, 180 jours au plus |
+| Base de données | 50 Mo |
 
 ## Développer
 
@@ -141,19 +114,21 @@ Lancer en local (le navigateur accepte les cookies `Secure` sur `localhost`) :
 
 ```sh
 mkdir -p data && chmod 777 data
-LISTES_ORIGIN=http://localhost:5240 docker compose up -d --build
-LISTES_ORIGIN=http://localhost:5240 docker compose exec listes listes user add alice
+docker compose up -d --build
+docker compose exec listes listes user add alice
 open http://localhost:5240
 ```
 
-Chaque version est un tag (`v1.0.0`, `v1.0.1`…). Dependabot propose chaque semaine les mises à jour
-des images de base, des dépendances Go et des actions GitHub ; la CI lance `gofmt`, `go vet`,
-`go test -race`, `govulncheck` (aussi chaque nuit) et vérifie que l'image fait moins de 20 Mo.
+Chaque version est un tag (`v1.0.0`, `v1.0.1`…), publié comme image par la CI. Dependabot propose
+chaque semaine les mises à jour des images de base, des dépendances Go et des actions GitHub ; la CI
+lance `gofmt`, `go vet`, `go test -race`, `govulncheck` (aussi chaque nuit) et vérifie que l'image
+fait moins de 20 Mo avant de la publier.
 
 ## Points de conception
 
 - **Accès** : une seule règle, `visibleTo` (propriétaire, ou liste partagée), et un seul passage
-  obligé, `accessList` / `accessItem` (`store.go`), pour toutes les routes et le flux SSE.
+  obligé, `accessList` / `accessItem` (`store.go`), pour toutes les routes. Le flux SSE applique
+  `visibleTo` à chaque destinataire, sur l'état de la liste après la modification.
   Le droit sur un élément vient de sa liste, retrouvée côté serveur. Liste privée d'un autre : 404.
 - **Identifiants** : 128 bits. À la création, ils sont dérivés d'un nonce aléatoire du client
   (`sha256(utilisateur, nonce)`). Le client connaît l'identifiant tout de suite (mises à jour
@@ -162,7 +137,15 @@ des images de base, des dépendances Go et des actions GitHub ; la CI lance `gof
 - **Temps réel** : SSE. Les écritures et la publication des événements partagent un même verrou,
   donc l'ordre des événements suit celui des commits et la visibilité est évaluée sur l'état exact.
   Une liste qui redevient privée n'envoie aux autres qu'un retrait (`{id, reason}`).
-- **Hors ligne** : file d'opérations dans le navigateur (`localStorage`), renvoyée dans l'ordre.
+- **Hors ligne** : un service worker (`/sw.js`) sert la page et ses fichiers depuis le réseau
+  d'abord, et depuis son cache seulement si le réseau ne répond pas (erreur, 502-504, ou rien
+  sous 4 s) : jamais de version périmée en ligne. L'API et le flux SSE ne passent pas par lui.
+  `app.js` garde une copie des listes (`localStorage`), affichée à l'ouverture puis remplacée par
+  l'état du serveur. La déconnexion efface la page en cache et cette copie ; une redirection vers
+  `/login` (session expirée) efface aussi la page.
+  File d'opérations dans le navigateur (`localStorage`), renvoyée dans l'ordre.
+  Chaque opération est idempotente ; « Vider les cochés » envoie les éléments vus cochés, pour ne
+  pas supprimer au renvoi ce qu'un autre a coché entre-temps.
   Délai de 15 s par requête, ping SSE toutes les 20 s, surveillé côté client.
 - **Sécurité** : connexion par mot de passe seul (Argon2id, paramètres OWASP), temps de réponse
   constant et message unique ; blocage par IP, simple ralentissement par compte (plafonné à 1 min,
@@ -170,7 +153,7 @@ des images de base, des dépendances Go et des actions GitHub ; la CI lance `gof
   (seul le hash est en base), Origin + Sec-Fetch-Site + jeton CSRF, CSP sans inline.
   `X-Forwarded-For` n'est lu que depuis 127.0.0.1 ou la passerelle Docker du réseau `listes`.
 - **Isolation** (une faille dans l'appli ne doit mener nulle part) : distroless sans shell,
-  non-root, `cap_drop: ALL`, `read_only`, un seul volume, `pids_limit`, `nofile`, journaux bornés,
-  base plafonnée à 50 Mo (507 « Stockage plein » au-delà, lecture intacte), journal applicatif
-  limité à une ligne par minute pour un même message, et aucune connexion sortante
-  (`contrib/listes-egress.service`).
+  non-root, base plafonnée à 50 Mo (507 « Stockage plein » au-delà, lecture intacte), journal
+  applicatif limité à une ligne par minute pour un même message. Le déploiement doit ajouter
+  `cap_drop: ALL`, `read_only`, un seul volume, `pids_limit`, `nofile`, des journaux bornés et
+  bloquer toute connexion sortante : l'appli n'en a besoin d'aucune.

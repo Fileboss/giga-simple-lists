@@ -1,0 +1,12 @@
+# Dev local uniquement : le déploiement utilise l'image publiée (voir README).
+# Le conteneur tourne en uid 1000 : ./data doit lui être accessible en écriture.
+services:
+  listes:
+    build: .
+    ports:
+      - "127.0.0.1:5240:5240"
+    volumes:
+      - ./data:/data
+    environment:
+      # Le navigateur accepte les cookies Secure sur localhost.
+      LISTES_ORIGIN: http://localhost:5240
