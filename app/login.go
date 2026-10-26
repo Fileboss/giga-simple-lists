@@ -33,7 +33,7 @@ func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
 // renderLogin pose un nouveau jeton CSRF de connexion (double soumission : cookie + champ caché).
 func (a *App) renderLogin(w http.ResponseWriter, status int, msg string) {
 	tok := randomToken()
-	setCookie(w, loginCSRFCookie, tok, 3600)
+	setCookie(w, loginCSRFCookie, tok, 3600, http.SameSiteStrictMode)
 	a.render(w, status, "login.html", loginPageData{CSRF: tok, Error: msg})
 }
 

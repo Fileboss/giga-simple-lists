@@ -40,7 +40,8 @@ func TestLoginSuccessAndCookie(t *testing.T) {
 		t.Fatalf("connexion refusée : %d %s", res.Code, res.Body)
 	}
 	c := res.Cookie
-	if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/" || c.Domain != "" {
+	// Lax : une appli installée sur l'écran d'accueil s'ouvre comme une navigation venue d'ailleurs.
+	if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.Domain != "" {
 		t.Fatalf("attributs du cookie : %+v", c)
 	}
 	if c.MaxAge < int((89 * 24 * time.Hour).Seconds()) {

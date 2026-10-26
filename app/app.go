@@ -180,7 +180,7 @@ func clientIP(r *http.Request, trusted []string) string {
 	return host
 }
 
-// sameOrigin : défense CSRF en plus de SameSite=Strict et du jeton synchroniseur.
+// sameOrigin : défense CSRF en plus de SameSite et du jeton synchroniseur.
 // Origin obligatoire et égale à l'origine publique ; Sec-Fetch-Site, s'il est
 // présent, doit valoir same-origin.
 func (a *App) sameOrigin(r *http.Request) bool {
@@ -243,19 +243,25 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 	}
 }
 
-// setCookie : tous les cookies sont des __Host- (Secure, Path=/), HttpOnly et SameSite=Strict.
-func setCookie(w http.ResponseWriter, name, value string, maxAge int) {
+// setCookie : tous les cookies sont des __Host- (Secure, Path=/) et HttpOnly.
+func setCookie(w http.ResponseWriter, name, value string, maxAge int, sameSite http.SameSite) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: maxAge,
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		Secure: true, HttpOnly: true, SameSite: sameSite})
 }
 
+// setSessionCookie : SameSite=Lax, pas Strict. Une appli installée sur l'écran d'accueil
+// (iOS surtout) s'ouvre par une navigation que le navigateur traite comme venue d'un autre
+// site : un cookie Strict n'y est pas envoyé, et l'appli redemandait la connexion à chaque
+// ouverture. Lax n'envoie le cookie, depuis un autre site, que sur une navigation GET, et
+// aucune route GET ne modifie rien ; les requêtes qui modifient restent protégées par
+// l'Origin, Sec-Fetch-Site et le jeton CSRF (authed).
 func setSessionCookie(w http.ResponseWriter, token string, s *session) {
 	maxAge := time.Duration(s.expiry()-nowMs()) * time.Millisecond
-	setCookie(w, sessionCookie, token, int(maxAge.Seconds()))
+	setCookie(w, sessionCookie, token, int(maxAge.Seconds()), http.SameSiteLaxMode)
 }
 
 func clearCookie(w http.ResponseWriter, name string) {
-	setCookie(w, name, "", -1)
+	setCookie(w, name, "", -1, http.SameSiteLaxMode)
 }
 
 // ---------------------------------------------------------------------------
