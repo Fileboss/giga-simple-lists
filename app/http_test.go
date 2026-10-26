@@ -241,6 +241,11 @@ func TestSecurityHeaders(t *testing.T) {
 	if m.Code != 200 || m.Header().Get("Content-Type") != "application/manifest+json" || !strings.Contains(m.Body.String(), `"standalone"`) {
 		t.Errorf("manifeste : %d %s", m.Code, m.Header().Get("Content-Type"))
 	}
+	// Service worker servi à la racine (portée « / »), revalidé à chaque fois.
+	sw := h.do(nil, "GET", "/sw.js", nil)
+	if sw.Code != 200 || !strings.HasPrefix(sw.Header().Get("Content-Type"), "text/javascript") || sw.Header().Get("Cache-Control") != "no-cache" {
+		t.Errorf("sw.js : %d %s %s", sw.Code, sw.Header().Get("Content-Type"), sw.Header().Get("Cache-Control"))
+	}
 	// Non connecté : redirection vers /login, et l'API répond 401.
 	if w := h.do(nil, "GET", "/", nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
 		t.Errorf("/ sans session : %d", w.Code)

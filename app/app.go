@@ -102,6 +102,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /healthz", a.healthz)
 	mux.HandleFunc("GET /static/", a.serveStatic)
 	mux.HandleFunc("GET /manifest.webmanifest", a.serveStatic)
+	mux.HandleFunc("GET /sw.js", a.serveStatic) // à la racine : sa portée couvre toute l'appli
 	mux.HandleFunc("GET /login", a.loginPage)
 	mux.HandleFunc("POST /login", a.loginPost)
 	mux.HandleFunc("POST /logout", a.authedPage(a.logout))
@@ -270,8 +271,8 @@ func (a *App) healthz(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) serveStatic(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
-	if p == "/manifest.webmanifest" {
-		p = "/static/manifest.webmanifest"
+	if p == "/manifest.webmanifest" || p == "/sw.js" {
+		p = "/static" + p
 	}
 	f, ok := a.static[p]
 	if !ok {

@@ -5,6 +5,7 @@
   const CSRF = document.querySelector('meta[name="csrf-token"]').content;
   const QUEUE_KEY = 'listes.queue.' + ME;
   const LAST_KEY = 'listes.last.' + ME;
+  const STATE_KEY = 'listes.state.' + ME; // dernières listes affichées, pour ouvrir l'appli sans réseau
   const $ = (id) => document.getElementById(id);
   const el = {
     tabs: $('tabs'), tabsPrev: $('tabs-prev'), tabsNext: $('tabs-next'), newList: $('new-list'), offline: $('offline'), toast: $('toast'),
@@ -25,8 +26,21 @@
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* stockage indisponible ou plein */ } },
+    remove(k) { try { localStorage.removeItem(k); } catch { /* stockage indisponible */ } },
   };
+
+  // Copie locale des listes, modifications en attente comprises : enregistrée peu après
+  // chaque changement, et tout de suite quand l'appli passe en arrière-plan.
+  let saveTimer = null;
+  function saveState() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (loaded) store.set(STATE_KEY, JSON.stringify(lists));
+  }
+  function scheduleSave() {
+    if (!saveTimer) saveTimer = setTimeout(saveState, 500);
+  }
 
   function randomHex() {
     const b = new Uint8Array(16);
@@ -71,6 +85,7 @@
     queue.push({ method, url, body, ids });
     trackPending(ids, 1);
     saveQueue();
+    scheduleSave();
     flush();
   }
 
@@ -281,6 +296,7 @@
   // Rendu (textContent uniquement : aucun HTML venant des données)
 
   function render() {
+    scheduleSave();
     renderTabs();
     const l = currentList();
     el.list.hidden = !l;
@@ -347,6 +363,7 @@
   // Cochés en bas, en gris. Les lignes existantes sont réutilisées pour ne pas
   // perdre le focus d'un texte en cours de modification.
   function renderItems(l) {
+    scheduleSave();
     if (drag) { drag.renderLater = true; return; }
     const ordered = [...l.items].sort((a, b) => (a.checked - b.checked) || (a.position - b.position));
     const existing = new Map([...el.items.children].map((li) => [li.dataset.id, li]));
@@ -766,12 +783,32 @@
   window.addEventListener('online', flush);
   window.addEventListener('offline', () => setOffline(true));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') { saveState(); return; }
     flush();
     if (!es || es.readyState === EventSource.CLOSED) connect();
   });
 
+  // Déconnexion : rien ne reste sur l'appareil (le service worker oublie la page).
+  document.querySelector('form[action="/logout"]').addEventListener('submit', () => {
+    clearTimeout(saveTimer);
+    loaded = false;
+    store.remove(STATE_KEY);
+  });
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+  // Ouverture : la copie locale tout de suite (sans réseau, c'est tout ce qu'on a),
+  // puis l'état du serveur par-dessus dès qu'il répond.
   current = store.get(LAST_KEY);
+  try {
+    const saved = JSON.parse(store.get(STATE_KEY) || 'null');
+    if (Array.isArray(saved)) {
+      lists = saved;
+      loaded = true;
+      if (!byId(current)) current = pickInitial();
+      render();
+    }
+  } catch { /* copie illisible : on attend le serveur */ }
   resync();
   flush();
   connect();
