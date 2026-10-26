@@ -147,7 +147,7 @@ fait moins de 20 Mo avant de la publier.
   Chaque opération est idempotente ; « Vider les cochés » envoie les éléments vus cochés, pour ne
   pas supprimer au renvoi ce qu'un autre a coché entre-temps.
   Délai de 15 s par requête, ping SSE toutes les 20 s, surveillé côté client.
-- **Sécurité** : connexion par mot de passe seul (Argon2id, paramètres OWASP), temps de réponse
+- **Sécurité** (choix et raisons : [SECURITY.md](SECURITY.md)) : connexion par mot de passe seul (Argon2id, paramètres OWASP), temps de réponse
   constant et message unique ; blocage par IP, simple ralentissement par compte (plafonné à 1 min,
   pour qu'un tiers ne puisse pas bloquer un compte), stockés en base ; cookie `__Host-session`
   (seul le hash est en base), Origin + Sec-Fetch-Site + jeton CSRF, CSP sans inline.
