@@ -40,7 +40,7 @@ type App struct {
 	loginMin time.Duration
 	// Battement du flux SSE ; la session est revérifiée à chaque battement.
 	heartbeat time.Duration
-	// Sérialise écritures et publications SSE (voir write).
+	// Sérialise écritures et publications SSE (voir commitAndPublish).
 	writeMu sync.Mutex
 }
 
@@ -76,9 +76,9 @@ func newApp(cfg config, db *sql.DB) *App {
 	return a
 }
 
-// write exécute fn dans une transaction puis publie ses événements, le tout sous un
+// commitAndPublish exécute fn dans une transaction puis publie ses événements, le tout sous un
 // même verrou : l'ordre des événements suit celui des commits.
-func (a *App) write(fn func(tx *sql.Tx) ([]event, error)) error {
+func (a *App) commitAndPublish(fn func(tx *sql.Tx) ([]event, error)) error {
 	a.writeMu.Lock()
 	defer a.writeMu.Unlock()
 	tx, err := a.db.Begin()
@@ -104,19 +104,19 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /manifest.webmanifest", a.serveStatic)
 	mux.HandleFunc("GET /login", a.loginPage)
 	mux.HandleFunc("POST /login", a.loginPost)
-	mux.HandleFunc("POST /logout", a.authed(false, a.logout))
-	mux.HandleFunc("GET /{$}", a.authed(false, a.appPage))
+	mux.HandleFunc("POST /logout", a.authedPage(a.logout))
+	mux.HandleFunc("GET /{$}", a.authedPage(a.appPage))
 
-	mux.HandleFunc("GET /api/state", a.authed(true, a.apiState))
-	mux.HandleFunc("GET /api/events", a.authed(true, a.apiEvents))
-	mux.HandleFunc("POST /api/lists", a.authed(true, a.apiCreateList))
-	mux.HandleFunc("PATCH /api/lists/{id}", a.authed(true, a.apiUpdateList))
-	mux.HandleFunc("DELETE /api/lists/{id}", a.authed(true, a.apiDeleteList))
-	mux.HandleFunc("POST /api/lists/{id}/items", a.authed(true, a.apiCreateItem))
-	mux.HandleFunc("POST /api/lists/{id}/clear-checked", a.authed(true, a.apiClearChecked))
-	mux.HandleFunc("PATCH /api/items/{id}", a.authed(true, a.apiUpdateItem))
-	mux.HandleFunc("DELETE /api/items/{id}", a.authed(true, a.apiDeleteItem))
-	mux.HandleFunc("POST /api/items/{id}/move", a.authed(true, a.apiMoveItem))
+	mux.HandleFunc("GET /api/state", a.authedAPI(a.apiState))
+	mux.HandleFunc("GET /api/events", a.authedAPI(a.apiEvents))
+	mux.HandleFunc("POST /api/lists", a.authedAPI(a.apiCreateList))
+	mux.HandleFunc("PATCH /api/lists/{id}", a.authedAPI(a.apiUpdateList))
+	mux.HandleFunc("DELETE /api/lists/{id}", a.authedAPI(a.apiDeleteList))
+	mux.HandleFunc("POST /api/lists/{id}/items", a.authedAPI(a.apiCreateItem))
+	mux.HandleFunc("POST /api/lists/{id}/clear-checked", a.authedAPI(a.apiClearChecked))
+	mux.HandleFunc("PATCH /api/items/{id}", a.authedAPI(a.apiUpdateItem))
+	mux.HandleFunc("DELETE /api/items/{id}", a.authedAPI(a.apiDeleteItem))
+	mux.HandleFunc("POST /api/items/{id}/move", a.authedAPI(a.apiMoveItem))
 	return securityHeaders(limitBody(mux))
 }
 
@@ -196,8 +196,17 @@ func isUnsafe(method string) bool {
 	return method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions
 }
 
-// authed exige une session valide ; pour toute requête qui modifie, il vérifie
-// aussi l'origine et le jeton CSRF de la session.
+// authedPage et authedAPI exigent une session valide ; pour toute requête qui modifie,
+// ils vérifient aussi l'origine et le jeton CSRF de la session. Sans session, une
+// page redirige vers /login et l'API répond 401 en JSON.
+func (a *App) authedPage(h func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
+	return a.authed(false, h)
+}
+
+func (a *App) authedAPI(h func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
+	return a.authed(true, h)
+}
+
 func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var token string
@@ -233,17 +242,19 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 	}
 }
 
+// setCookie : tous les cookies sont des __Host- (Secure, Path=/), HttpOnly et SameSite=Strict.
+func setCookie(w http.ResponseWriter, name, value string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: maxAge,
+		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+}
+
 func setSessionCookie(w http.ResponseWriter, token string, s *session) {
 	maxAge := time.Duration(s.expiry()-nowMs()) * time.Millisecond
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: token, Path: "/", MaxAge: int(maxAge.Seconds()),
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode,
-	})
+	setCookie(w, sessionCookie, token, int(maxAge.Seconds()))
 }
 
 func clearCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1,
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	setCookie(w, name, "", -1)
 }
 
 // ---------------------------------------------------------------------------
@@ -285,172 +296,17 @@ func (a *App) render(w http.ResponseWriter, status int, name string, data any) {
 	}
 }
 
+// appPageData : les limites viennent de store.go, app.js les lit dans la page.
 type appPageData struct {
-	UserID, Name, CSRF string
-	Colors             []color
+	UserID, Name, CSRF       string
+	Colors                   []color
+	MaxItemText, MaxListName int
+	DefaultListName          string
 }
 
 func (a *App) appPage(w http.ResponseWriter, r *http.Request, s *session) {
-	a.render(w, http.StatusOK, "app.html", appPageData{UserID: s.UserID, Name: s.UserName, CSRF: s.CSRF, Colors: colors})
-}
-
-// ---------------------------------------------------------------------------
-// Connexion
-
-const loginCSRFCookie = "__Host-login"
-
-const loginFailed = "Identifiant ou mot de passe incorrect."
-
-type loginPageData struct {
-	CSRF, Error string
-}
-
-func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(sessionCookie); err == nil {
-		if _, _, err := lookupSession(a.db, c.Value); err == nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-	}
-	a.renderLogin(w, http.StatusOK, "")
-}
-
-// renderLogin pose un nouveau jeton CSRF de connexion (double soumission : cookie + champ caché).
-func (a *App) renderLogin(w http.ResponseWriter, status int, msg string) {
-	tok := randomToken()
-	http.SetCookie(w, &http.Cookie{Name: loginCSRFCookie, Value: tok, Path: "/", MaxAge: 3600,
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
-	a.render(w, status, "login.html", loginPageData{CSRF: tok, Error: msg})
-}
-
-// Tentatives ralenties qui attendent en même temps : chacune garde une connexion ouverte.
-var slowSem = make(chan struct{}, 32)
-
-func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r, a.cfg.TrustedProxies)
-
-	c, err := r.Cookie(loginCSRFCookie)
-	if !a.sameOrigin(r) || err != nil || r.ParseForm() != nil ||
-		subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.Value)) != 1 {
-		slog.Warn("connexion refusée : origine ou jeton CSRF invalide", "ip", ip)
-		writeJSON(w, http.StatusForbidden, apiError{"Requête refusée."})
-		return
-	}
-
-	name := r.PostFormValue("name")
-	// Ralentissement par compte (après plusieurs échecs) : appliqué avant toute
-	// vérification, au plus 1 minute ; le délai d'écriture est prolongé d'autant.
-	delay, err := accountDelay(a.db, userKey(name))
-	if err != nil {
-		errorLog("login_attempts", err)
-	}
-	if delay > 0 {
-		select {
-		case slowSem <- struct{}{}:
-		default:
-			// Trop de tentatives ralenties en attente : refus immédiat, sans vérifier.
-			throttledLog("connexion refusée : trop de tentatives ralenties en attente", "ip", ip)
-			a.renderLogin(w, http.StatusUnauthorized, loginFailed)
-			return
-		}
-		http.NewResponseController(w).SetWriteDeadline(time.Now().Add(delay + a.loginMin + 15*time.Second))
-		time.Sleep(delay)
-		<-slowSem
-	}
-	start := time.Now()
-	u := a.authenticate(ip, name, r.PostFormValue("password"))
-	// Même durée pour toutes les issues : compte inexistant, mot de passe faux, IP bloquée.
-	if d := a.loginMin - time.Since(start); d > 0 {
-		time.Sleep(d)
-	}
-	if u == nil {
-		a.renderLogin(w, http.StatusUnauthorized, loginFailed)
-		return
-	}
-
-	// Nouvelle session à chaque connexion ; l'éventuelle ancienne est détruite.
-	if old, err := r.Cookie(sessionCookie); err == nil {
-		deleteSession(a.db, tokenHash(old.Value))
-	}
-	token, s, err := createSession(a.db, u.ID)
-	if err != nil {
-		errorLog("création de session", err)
-		writeErr(w, err)
-		return
-	}
-	slog.Info("connexion réussie", "ip", ip, "user", u.Name)
-	clearCookie(w, loginCSRFCookie)
-	setSessionCookie(w, token, s)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-// authenticate vérifie le mot de passe. Le calcul coûteux est fait même pour un
-// compte inexistant. Renvoie nil en cas d'échec ; la cause ne va qu'au journal.
-func (a *App) authenticate(ip, name, password string) *user {
-	name = strings.TrimSpace(name)
-	keys := []string{ipKey(ip), userKey(name)}
-	blocked, err := loginBlocked(a.db, keys[0])
-	if err != nil {
-		errorLog("login_attempts", err)
-		return nil
-	}
-	u, err := userByName(a.db, name)
-	if err != nil && !errors.Is(err, errNotFound) {
-		errorLog("users", err)
-		return nil
-	}
-	logName := "" // nom journalisé seulement s'il existe (un mot de passe tapé dans le mauvais champ ne finit pas dans les journaux)
-	hash := dummyHash()
-	if u != nil {
-		hash, logName = u.PasswordHash, u.Name
-	}
-
-	reason := ""
-	switch {
-	case blocked:
-		// Une IP bloquée qui insiste ne remplit pas le journal : une ligne par minute au plus.
-		throttledLog("connexion refusée : IP bloquée (trop de tentatives)", "ip", ip)
-		return nil
-	case len(password) > 1024:
-		reason = "mot de passe trop long"
-	default:
-		pwOK := verifyPassword(hash, password)
-		switch {
-		case u == nil:
-			reason = "compte inconnu"
-		case !pwOK:
-			reason = "mot de passe"
-		default:
-			if err := clearFailures(a.db, keys...); err != nil {
-				errorLog("login_attempts", err)
-			}
-			return u
-		}
-	}
-	if err := recordFailure(a.db, keys[0], ipRule); err != nil {
-		errorLog("login_attempts", err)
-	}
-	if err := recordFailure(a.db, keys[1], accountRule); err != nil {
-		errorLog("login_attempts", err)
-	}
-	slog.Warn("connexion refusée", "ip", ip, "user", logName, "cause", reason)
-	return nil
-}
-
-func rowsAffected(res sql.Result, err error) (int64, error) {
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
-}
-
-func (a *App) logout(w http.ResponseWriter, r *http.Request, s *session) {
-	if err := deleteSession(a.db, s.Hash); err != nil {
-		errorLog("déconnexion", err)
-	}
-	a.hub.closeSession(s.Hash)
-	clearCookie(w, sessionCookie)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	a.render(w, http.StatusOK, "app.html", appPageData{UserID: s.UserID, Name: s.UserName, CSRF: s.CSRF, Colors: colors,
+		MaxItemText: maxItemText, MaxListName: maxListName, DefaultListName: defaultListName})
 }
 
 // housekeeping : purge horaire des sessions expirées et des vieux compteurs d'échecs.

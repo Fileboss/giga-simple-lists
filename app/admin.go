@@ -95,7 +95,10 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 	if create {
 		// NOCASE de SQLite ne couvre que l'ASCII : « zoé » et « ZOÉ » sont comparés ici.
 		var taken bool
-		if taken, err = nameTaken(tx, name); err == nil && taken {
+		if taken, err = nameTaken(tx, name); err != nil {
+			return err
+		}
+		if taken {
 			return fmt.Errorf("le compte %q existe déjà (user reset pour le réinitialiser)", name)
 		}
 		_, err = tx.Exec(`INSERT INTO users (id, name, password_hash, created_at) VALUES (?, ?, ?, ?)`,
@@ -169,4 +172,11 @@ func generatePassword() string {
 		i++
 	}
 	return b.String()
+}
+
+func rowsAffected(res sql.Result, err error) (int64, error) {
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

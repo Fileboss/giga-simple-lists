@@ -13,6 +13,7 @@
     ownerTools: $('owner-tools'), del: $('delete'), confirm: $('confirm-delete'),
     confirmText: $('confirm-text'), delYes: $('delete-yes'), delNo: $('delete-no'), empty: $('empty'),
   };
+  const DEFAULT_LIST_NAME = document.body.dataset.defaultListName;
   const COLORS = [...document.querySelectorAll('input[name="color"]')].map((i) => i.value);
 
   let lists = [];          // [{id, owner_id, owner_name, name, color, shared, position, items: [...]}]
@@ -59,16 +60,16 @@
   let queue = [];
   try { queue = JSON.parse(store.get(QUEUE_KEY) || '[]'); } catch { queue = []; }
   const pending = new Map(); // id d'élément ou de liste -> opérations en attente
-  const touch = (ids, d) => ids.forEach((id) => {
+  const trackPending = (ids, d) => ids.forEach((id) => {
     const n = (pending.get(id) || 0) + d;
     if (n > 0) pending.set(id, n); else pending.delete(id);
   });
-  queue.forEach((op) => touch(op.ids, 1));
+  queue.forEach((op) => trackPending(op.ids, 1));
   const saveQueue = () => store.set(QUEUE_KEY, JSON.stringify(queue));
 
   function send(method, url, body, ids) {
     queue.push({ method, url, body, ids });
-    touch(ids, 1);
+    trackPending(ids, 1);
     saveQueue();
     flush();
   }
@@ -109,7 +110,7 @@
         if (res.status === 502 || res.status === 503 || res.status === 504) return retryLater();
         setOffline(false);
         queue.shift();
-        touch(op.ids, -1);
+        trackPending(op.ids, -1);
         saveQueue();
         if (!res.ok) {
           // Refus définitif (404 : la liste n'est plus visible, 403, 400…) : on abandonne
@@ -395,7 +396,7 @@
     const text = document.createElement('textarea');
     text.className = 'text';
     text.rows = 1;
-    text.maxLength = 500;
+    text.maxLength = el.newItem.maxLength;
     text.autocomplete = 'off';
     text.enterKeyHint = 'done';
     text.setAttribute('aria-label', 'Texte de l’élément');
@@ -471,11 +472,11 @@
   const groupOf = (li) => [...el.items.children].filter((x) => x.classList.contains('done') === li.classList.contains('done'));
 
   // Après un déplacement dans le DOM : l'élément suivant du groupe donne la cible.
-  function commitRowMove(li, before0) {
+  function commitRowMove(li, beforeAtStart) {
     const group = groupOf(li);
     const next = group[group.indexOf(li) + 1];
     const before = next ? next.dataset.id : '';
-    if (before === before0) return false;
+    if (before === beforeAtStart) return false;
     moveItem(li.dataset.id, before);
     return true;
   }
@@ -509,7 +510,7 @@
     const group = groupOf(li);
     const next = group[group.indexOf(li) + 1];
     const top = li.getBoundingClientRect().top;
-    drag = { li, y: e.clientY, grab: e.clientY - top, dy: 0, before0: next ? next.dataset.id : '', renderLater: false };
+    drag = { li, y: e.clientY, grab: e.clientY - top, dy: 0, beforeAtStart: next ? next.dataset.id : '', renderLater: false };
     // Emplacement d'atterrissage : un aplat plus sombre à la place que prendra la ligne.
     drag.slot = document.createElement('div');
     drag.slot.className = 'drop-slot instant';
@@ -563,7 +564,7 @@
 
   function endDrag(commit) {
     if (!drag) return;
-    const { li, before0, renderLater, dy, slot } = drag;
+    const { li, beforeAtStart, renderLater, dy, slot } = drag;
     drag = null;
     if (reduceMotion) slot.remove();
     else slot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: EASE }).finished.then(() => slot.remove());
@@ -573,7 +574,7 @@
     if (!reduceMotion) {
       li.animate([{ transform: 'translateY(' + dy + 'px)' + LIFT }, { transform: 'none' }], { duration: 180, easing: EASE });
     }
-    if (!(commit && commitRowMove(li, before0)) || renderLater) renderItems(currentList());
+    if (!(commit && commitRowMove(li, beforeAtStart)) || renderLater) renderItems(currentList());
   }
 
   function removeItem(id) {
@@ -590,9 +591,9 @@
     const mine = lists.filter(isMine);
     const color = COLORS[mine.length % COLORS.length];
     const position = mine.reduce((m, l) => Math.max(m, l.position), 0) + 1;
-    lists.push({ id, owner_id: ME, owner_name: document.body.dataset.name, name: 'Nouvelle liste',
+    lists.push({ id, owner_id: ME, owner_name: document.body.dataset.name, name: DEFAULT_LIST_NAME,
       color, shared: false, position, items: [] });
-    send('POST', '/api/lists', { nonce, name: 'Nouvelle liste', color }, [id]);
+    send('POST', '/api/lists', { nonce, name: DEFAULT_LIST_NAME, color }, [id]);
     open(id);
     el.title.focus();
     el.title.select();
@@ -669,11 +670,11 @@
     const li = h.closest('.item');
     const group = groupOf(li);
     const i = group.indexOf(li);
-    const before0 = group[i + 1] ? group[i + 1].dataset.id : '';
+    const beforeAtStart = group[i + 1] ? group[i + 1].dataset.id : '';
     if (e.key === 'ArrowUp' && i > 0) flip([li, group[i - 1]], () => el.items.insertBefore(li, group[i - 1]));
     else if (e.key === 'ArrowDown' && i < group.length - 1) flip([li, group[i + 1]], () => group[i + 1].after(li));
     else return;
-    commitRowMove(li, before0);
+    commitRowMove(li, beforeAtStart);
     renderItems(currentList());
     h.focus();
   });
@@ -733,7 +734,11 @@
     if (!ids.length) return;
     l.items = l.items.filter((it) => !it.checked);
     renderItems(l);
-    send('POST', '/api/lists/' + l.id + '/clear-checked', {}, ids);
+    // Le serveur ne supprime que ces éléments (s'ils sont encore cochés), par paquets de 200.
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      send('POST', '/api/lists/' + l.id + '/clear-checked', { ids: chunk }, chunk);
+    }
   });
 
   // Suppression : confirmation dans la page.

@@ -1,4 +1,4 @@
-// Listes : listes à cocher partagées à deux, temps réel (SSE), un seul binaire.
+// Listes : listes à cocher partagées, temps réel (SSE), un seul binaire.
 //
 //	listes [serve]                 serveur HTTP
 //	listes user add <nom>          crée un compte (mot de passe généré)

@@ -146,35 +146,42 @@ func userKey(name string) string {
 	return "user:" + name
 }
 
-// loginBlocked : vrai si l'une des clés est en période de blocage (IP seulement).
-func loginBlocked(q querier, keys ...string) (bool, error) {
-	for _, k := range keys {
-		var until int64
-		err := q.QueryRow(`SELECT locked_until FROM login_attempts WHERE key = ?`, k).Scan(&until)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		if until > nowMs() {
-			return true, nil
-		}
+// loginBlocked : vrai si la clé est en période de blocage (seules les IP sont bloquées).
+func loginBlocked(q querier, key string) (bool, error) {
+	var until int64
+	err := q.QueryRow(`SELECT locked_until FROM login_attempts WHERE key = ?`, key).Scan(&until)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
 	}
-	return false, nil
+	if err != nil {
+		return false, err
+	}
+	return until > nowMs(), nil
+}
+
+// recentFailures : nombre d'échecs de la clé, remis à zéro après attemptsWindow sans échec.
+func recentFailures(q querier, key string) (int64, error) {
+	var failures, last int64
+	err := q.QueryRow(`SELECT failures, last_failure_at FROM login_attempts WHERE key = ?`, key).Scan(&failures, &last)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if nowMs()-last > attemptsWindow.Milliseconds() {
+		return 0, nil
+	}
+	return failures, nil
 }
 
 func recordFailure(q querier, key string, r limitRule) error {
-	t := nowMs()
-	var failures, last int64
-	err := q.QueryRow(`SELECT failures, last_failure_at FROM login_attempts WHERE key = ?`, key).Scan(&failures, &last)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	failures, err := recentFailures(q, key)
+	if err != nil {
 		return err
 	}
-	if t-last > attemptsWindow.Milliseconds() {
-		failures = 0
-	}
 	failures++
+	t := nowMs()
 	var until int64
 	if r.block {
 		if d := r.delay(failures); d > 0 {
@@ -189,16 +196,9 @@ func recordFailure(q querier, key string, r limitRule) error {
 
 // accountDelay : ralentissement à appliquer avant de vérifier une tentative sur ce compte.
 func accountDelay(q querier, key string) (time.Duration, error) {
-	var failures, last int64
-	err := q.QueryRow(`SELECT failures, last_failure_at FROM login_attempts WHERE key = ?`, key).Scan(&failures, &last)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
+	failures, err := recentFailures(q, key)
 	if err != nil {
 		return 0, err
-	}
-	if nowMs()-last > attemptsWindow.Milliseconds() {
-		return 0, nil
 	}
 	return accountRule.delay(failures), nil
 }

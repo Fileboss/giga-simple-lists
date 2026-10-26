@@ -20,6 +20,7 @@ const (
 	defaultListName  = "Nouvelle liste"
 	maxBodyBytes     = 16 << 10
 	maxUserNameRunes = 32
+	maxClearIDs      = 200 // par requête « vider les cochés » (tient dans maxBodyBytes)
 )
 
 var (
@@ -207,22 +208,21 @@ func loadItems(q querier, listID string) ([]Item, error) {
 // client et de l'utilisateur. Le client connaît l'identifiant avant la réponse
 // (mises à jour optimistes, file hors ligne) et un renvoi de la même requête est
 // idempotent. Un autre utilisateur ne peut pas produire le même identifiant.
-var nonceRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+// Identifiants et nonces : 128 bits en hexadécimal.
+var hex128Re = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func creationID(userID, nonce string) (string, error) {
 	if nonce == "" {
 		return newID(), nil
 	}
-	if !nonceRe.MatchString(nonce) {
+	if !hex128Re.MatchString(nonce) {
 		return "", invalidError("nonce invalide")
 	}
 	h := sha256.Sum256([]byte("listes-id\x00" + userID + "\x00" + nonce))
 	return hex.EncodeToString(h[:16]), nil
 }
 
-var idRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
-
-func validID(id string) bool { return idRe.MatchString(id) }
+func validID(id string) bool { return hex128Re.MatchString(id) }
 
 // cleanText : UTF-8 valide, caractères de contrôle remplacés par des espaces, espaces
 // de bord retirés, au plus max caractères.
@@ -478,25 +478,44 @@ func deleteItem(tx querier, userID, itemID string) (*Item, *List, error) {
 	return it, l, err
 }
 
-func clearChecked(tx querier, userID, listID string) (*List, []string, error) {
+// clearChecked supprime les éléments ids de la liste, s'ils sont toujours cochés. Le
+// client envoie ceux qu'il voyait cochés : un renvoi tardif (file hors ligne) ne
+// supprime pas ce qu'un autre a coché entre-temps.
+func clearChecked(tx querier, userID, listID string, ids []string) (*List, []string, error) {
+	if len(ids) > maxClearIDs {
+		return nil, nil, invalidError("trop d'éléments")
+	}
+	for _, id := range ids {
+		if !validID(id) {
+			return nil, nil, invalidError("élément invalide")
+		}
+	}
 	l, err := accessList(tx, userID, listID)
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := tx.Query(`DELETE FROM items WHERE list_id = ? AND checked = 1 RETURNING id`, l.ID)
+	removed := []string{}
+	if len(ids) == 0 {
+		return l, removed, nil
+	}
+	args := []any{l.ID}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := tx.Query(`DELETE FROM items WHERE list_id = ? AND checked = 1 AND id IN (?`+
+		strings.Repeat(", ?", len(ids)-1)+`) RETURNING id`, args...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
-	ids := []string{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, nil, err
 		}
-		ids = append(ids, id)
+		removed = append(removed, id)
 	}
-	return l, ids, rows.Err()
+	return l, removed, rows.Err()
 }
 
 func isConstraint(err error) bool {

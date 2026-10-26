@@ -49,14 +49,14 @@ func (a *App) apiCreateList(w http.ResponseWriter, r *http.Request, s *session) 
 		return
 	}
 	var l *List
-	err := a.write(func(tx *sql.Tx) ([]event, error) {
+	err := a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		var created bool
 		var err error
 		l, created, err = createList(tx, s.UserID, in.Nonce, in.Name, in.Color)
 		if err != nil || !created {
 			return nil, err
 		}
-		return []event{newEvent("list", l, toViewersOf(l))}, nil
+		return []event{newEvent(evList, l, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
@@ -77,7 +77,7 @@ func (a *App) apiUpdateList(w http.ResponseWriter, r *http.Request, s *session) 
 		return
 	}
 	var after *List
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		before, aft, err := updateList(tx, s.UserID, id, p)
 		if err != nil {
 			return nil, err
@@ -104,12 +104,12 @@ func (a *App) apiDeleteList(w http.ResponseWriter, r *http.Request, s *session) 
 		writeErr(w, err)
 		return
 	}
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		l, err := deleteList(tx, s.UserID, id)
 		if err != nil {
 			return nil, err
 		}
-		return []event{newEvent("list-removed", removal{ID: l.ID, Reason: "deleted"}, toViewersOf(l))}, nil
+		return []event{newEvent(evListRemoved, removal{ID: l.ID, Reason: reasonDeleted}, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
@@ -133,7 +133,7 @@ func (a *App) apiCreateItem(w http.ResponseWriter, r *http.Request, s *session) 
 		return
 	}
 	var it *Item
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		var l *List
 		var created bool
 		var err error
@@ -141,18 +141,13 @@ func (a *App) apiCreateItem(w http.ResponseWriter, r *http.Request, s *session) 
 		if err != nil || !created {
 			return nil, err
 		}
-		return []event{newEvent("item", it, toViewersOf(l))}, nil
+		return []event{newEvent(evItem, it, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, it)
-}
-
-type itemRemoval struct {
-	ID     string `json:"id"`
-	ListID string `json:"list_id"`
 }
 
 func (a *App) apiUpdateItem(w http.ResponseWriter, r *http.Request, s *session) {
@@ -168,7 +163,7 @@ func (a *App) apiUpdateItem(w http.ResponseWriter, r *http.Request, s *session) 
 	}
 	var it *Item
 	var deleted bool
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		var l *List
 		var err error
 		it, l, deleted, err = updateItem(tx, s.UserID, id, p)
@@ -176,9 +171,9 @@ func (a *App) apiUpdateItem(w http.ResponseWriter, r *http.Request, s *session) 
 			return nil, err
 		}
 		if deleted {
-			return []event{newEvent("item-removed", itemRemoval{it.ID, it.ListID}, toViewersOf(l))}, nil
+			return []event{newEvent(evItemRemoved, itemRemoval{it.ID, it.ListID}, toViewersOf(l))}, nil
 		}
-		return []event{newEvent("item", it, toViewersOf(l))}, nil
+		return []event{newEvent(evItem, it, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
@@ -197,12 +192,12 @@ func (a *App) apiDeleteItem(w http.ResponseWriter, r *http.Request, s *session) 
 		writeErr(w, err)
 		return
 	}
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		it, l, err := deleteItem(tx, s.UserID, id)
 		if err != nil {
 			return nil, err
 		}
-		return []event{newEvent("item-removed", itemRemoval{it.ID, it.ListID}, toViewersOf(l))}, nil
+		return []event{newEvent(evItemRemoved, itemRemoval{it.ID, it.ListID}, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
@@ -231,7 +226,7 @@ func (a *App) apiMoveItem(w http.ResponseWriter, r *http.Request, s *session) {
 		return
 	}
 	var moved []itemPosition
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		l, changed, err := moveItem(tx, s.UserID, id, in.Before)
 		if err != nil {
 			return nil, err
@@ -240,7 +235,7 @@ func (a *App) apiMoveItem(w http.ResponseWriter, r *http.Request, s *session) {
 		if len(changed) == 0 {
 			return nil, nil
 		}
-		return []event{newEvent("items-moved", map[string]any{"list_id": l.ID, "items": changed}, toViewersOf(l))}, nil
+		return []event{newEvent(evItemsMoved, itemsMoved{l.ID, changed}, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
@@ -249,18 +244,28 @@ func (a *App) apiMoveItem(w http.ResponseWriter, r *http.Request, s *session) {
 	if moved == nil {
 		moved = []itemPosition{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": moved})
+	writeJSON(w, http.StatusOK, struct {
+		Items []itemPosition `json:"items"`
+	}{moved})
 }
 
+// apiClearChecked : {"ids": [...]} les éléments cochés vus par le client.
 func (a *App) apiClearChecked(w http.ResponseWriter, r *http.Request, s *session) {
 	id, err := pathID(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	var in struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var ids []string
-	err = a.write(func(tx *sql.Tx) ([]event, error) {
-		l, removed, err := clearChecked(tx, s.UserID, id)
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
+		l, removed, err := clearChecked(tx, s.UserID, id, in.IDs)
 		if err != nil {
 			return nil, err
 		}
@@ -268,13 +273,15 @@ func (a *App) apiClearChecked(w http.ResponseWriter, r *http.Request, s *session
 		if len(ids) == 0 {
 			return nil, nil
 		}
-		return []event{newEvent("items-removed", map[string]any{"list_id": l.ID, "ids": ids}, toViewersOf(l))}, nil
+		return []event{newEvent(evItemsRemoved, itemsRemoved{l.ID, ids}, toViewersOf(l))}, nil
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ids": ids})
+	writeJSON(w, http.StatusOK, struct {
+		IDs []string `json:"ids"`
+	}{ids})
 }
 
 // apiEvents : flux SSE de l'utilisateur. Ne reçoit que les événements dont le

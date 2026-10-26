@@ -15,6 +15,20 @@ type event struct {
 	to   func(userID string) bool
 }
 
+// Noms des événements SSE (écoutés par app.js, vérifié par TestEventNamesInJS) et
+// raisons d'un retrait de liste.
+const (
+	evList         = "list"
+	evListRemoved  = "list-removed"
+	evItem         = "item"
+	evItemRemoved  = "item-removed"
+	evItemsRemoved = "items-removed"
+	evItemsMoved   = "items-moved"
+
+	reasonDeleted  = "deleted"
+	reasonUnshared = "unshared"
+)
+
 func newEvent(name string, v any, to func(string) bool) event {
 	b, _ := json.Marshal(v)
 	return event{name: name, data: b, to: to}
@@ -34,25 +48,40 @@ func listChangedEvents(before, after *List, items []Item) []event {
 	case before.Shared && !after.Shared:
 		owner := after.OwnerID
 		return []event{
-			newEvent("list", meta, toViewersOf(after)),
-			newEvent("list-removed", removal{ID: after.ID, Reason: "unshared"}, func(uid string) bool { return uid != owner }),
+			newEvent(evList, meta, toViewersOf(after)),
+			newEvent(evListRemoved, removal{ID: after.ID, Reason: reasonUnshared}, func(uid string) bool { return uid != owner }),
 		}
 	case !before.Shared && after.Shared:
 		full := meta
 		full.Items = items
 		owner := after.OwnerID
 		return []event{
-			newEvent("list", meta, func(uid string) bool { return uid == owner }),
-			newEvent("list", full, func(uid string) bool { return uid != owner && visibleTo(after, uid) }),
+			newEvent(evList, meta, func(uid string) bool { return uid == owner }),
+			newEvent(evList, full, func(uid string) bool { return uid != owner && visibleTo(after, uid) }),
 		}
 	default:
-		return []event{newEvent("list", meta, toViewersOf(after))}
+		return []event{newEvent(evList, meta, toViewersOf(after))}
 	}
 }
 
 type removal struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
+}
+
+type itemRemoval struct {
+	ID     string `json:"id"`
+	ListID string `json:"list_id"`
+}
+
+type itemsMoved struct {
+	ListID string         `json:"list_id"`
+	Items  []itemPosition `json:"items"`
+}
+
+type itemsRemoved struct {
+	ListID string   `json:"list_id"`
+	IDs    []string `json:"ids"`
 }
 
 // ---------------------------------------------------------------------------

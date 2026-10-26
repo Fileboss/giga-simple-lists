@@ -319,6 +319,16 @@ func TestColorContrast(t *testing.T) {
 	}
 }
 
+// Les noms d'événements SSE et les raisons de retrait sont dupliqués dans app.js.
+func TestEventNamesInJS(t *testing.T) {
+	js, _ := staticFS.ReadFile("web/static/app.js")
+	for _, n := range []string{evList, evListRemoved, evItem, evItemRemoved, evItemsRemoved, evItemsMoved, reasonUnshared} {
+		if !strings.Contains(string(js), "'"+n+"'") {
+			t.Errorf("app.js : %q absent", n)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // SSE : survit aux timeouts du serveur ; nombre de flux limité ; coupé si la session disparaît.
 

@@ -118,7 +118,7 @@ func TestSharedListRights(t *testing.T) {
 	h.expect(http.StatusOK, sb, "PATCH", "/api/items/"+it.ID, map[string]any{"checked": true})
 	h.expect(http.StatusOK, sb, "PATCH", "/api/items/"+it.ID, map[string]any{"text": "lait demi-écrémé"})
 	added := h.createItem(sb, l.ID, "pain")
-	h.expect(http.StatusOK, sb, "POST", "/api/lists/"+l.ID+"/clear-checked", map[string]any{})
+	h.expect(http.StatusOK, sb, "POST", "/api/lists/"+l.ID+"/clear-checked", map[string]any{"ids": []string{it.ID}})
 	h.expect(http.StatusNoContent, sb, "DELETE", "/api/items/"+added.ID, nil)
 
 	var shared bool
@@ -242,4 +242,39 @@ func TestMoveItem(t *testing.T) {
 	if o := order(); o != "bac" {
 		t.Fatalf("ordre : %s", o)
 	}
+}
+
+// « Vider les cochés » renvoyé tard (file hors ligne) : seuls les éléments vus cochés
+// par le client partent, et seulement s'ils le sont encore.
+func TestClearCheckedOnlySentIDs(t *testing.T) {
+	h := newHarness(t)
+	sa, sb := h.session(h.addUser("alice")), h.session(h.addUser("bob"))
+	l := h.createList(sa, "Courses")
+	h.mustDo(sa, "PATCH", "/api/lists/"+l.ID, map[string]any{"shared": true}, nil)
+	seen := h.createItem(sa, l.ID, "lait")
+	unchecked := h.createItem(sa, l.ID, "pain")
+	later := h.createItem(sa, l.ID, "œufs")
+	h.mustDo(sa, "PATCH", "/api/items/"+seen.ID, map[string]any{"checked": true}, nil)
+	h.mustDo(sa, "PATCH", "/api/items/"+unchecked.ID, map[string]any{"checked": true}, nil)
+
+	// Entre-temps, bob décoche « pain » et coche « œufs ».
+	h.mustDo(sb, "PATCH", "/api/items/"+unchecked.ID, map[string]any{"checked": false}, nil)
+	h.mustDo(sb, "PATCH", "/api/items/"+later.ID, map[string]any{"checked": true}, nil)
+
+	var out struct{ IDs []string }
+	h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/clear-checked", map[string]any{"ids": []string{seen.ID, unchecked.ID}}, &out)
+	if len(out.IDs) != 1 || out.IDs[0] != seen.ID {
+		t.Fatalf("supprimés : %v", out.IDs)
+	}
+	var n int
+	h.db.QueryRow(`SELECT COUNT(*) FROM items WHERE list_id = ?`, l.ID).Scan(&n)
+	if n != 2 {
+		t.Fatalf("%d éléments restants, 2 attendus", n)
+	}
+
+	ids := make([]string, maxClearIDs+1)
+	for i := range ids {
+		ids[i] = newID()
+	}
+	h.expect(http.StatusBadRequest, sa, "POST", "/api/lists/"+l.ID+"/clear-checked", map[string]any{"ids": ids})
 }

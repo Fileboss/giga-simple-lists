@@ -14,12 +14,12 @@
 <meta name="theme-color" content="#fbfaf7">
 <script src="/static/app.js" defer></script>
 </head>
-<body data-me="{{.UserID}}" data-name="{{.Name}}">
+<body data-me="{{.UserID}}" data-name="{{.Name}}" data-default-list-name="{{.DefaultListName}}">
 <header class="bar">
   <button id="tabs-prev" class="tabs-nav" type="button" aria-label="Listes précédentes" hidden>‹</button>
   <nav id="tabs" class="tabs" aria-label="Listes"></nav>
   <button id="tabs-next" class="tabs-nav" type="button" aria-label="Listes suivantes" hidden>›</button>
-  <button id="new-list" class="new-list" type="button" aria-label="Nouvelle liste">+</button>
+  <button id="new-list" class="new-list" type="button" aria-label="{{.DefaultListName}}">+</button>
 </header>
 
 <div class="notices">
@@ -29,13 +29,13 @@
 
 <main id="list" class="list" hidden>
   <div class="list-head">
-    <input id="title" class="title" maxlength="80" aria-label="Nom de la liste" autocomplete="off" enterkeyhint="done">
+    <input id="title" class="title" maxlength="{{.MaxListName}}" aria-label="Nom de la liste" autocomplete="off" enterkeyhint="done">
     <label class="share"><input id="share" type="checkbox"> Partager</label>
   </div>
   <p id="owner-note" class="owner-note" hidden></p>
 
   <form id="add" class="add" autocomplete="off">
-    <input id="new-item" maxlength="500" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done">
+    <input id="new-item" maxlength="{{.MaxItemText}}" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done">
     <button id="add-btn" type="submit" class="add-btn">Ajouter</button>
   </form>
 

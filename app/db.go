@@ -43,7 +43,7 @@ func openDB(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Deux utilisateurs : une seule connexion suffit, sérialise les écritures et garde la RAM basse.
+	// Quelques utilisateurs : une seule connexion suffit, sérialise les écritures et garde la RAM basse.
 	db.SetMaxOpenConns(1)
 	db.SetConnMaxIdleTime(0)
 	if err := migrate(db); err != nil {
