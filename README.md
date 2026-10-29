@@ -6,7 +6,7 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
   rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
   éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
-- Éléments réordonnables par glisser-déposer ; « Vider les cochés » retire d'un coup les éléments cochés.
+- Éléments réordonnables par glisser-déposer ; « Retirer les cochés » retire d'un coup les éléments cochés, « Tout décocher » les remet à faire (courses récurrentes).
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
 - Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
   sans réseau sont renvoyées au retour de la connexion.

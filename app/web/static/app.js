@@ -10,7 +10,7 @@
   const el = {
     tabs: $('tabs'), tabsPrev: $('tabs-prev'), tabsNext: $('tabs-next'), newList: $('new-list'), offline: $('offline'), toast: $('toast'),
     list: $('list'), title: $('title'), share: $('share'), ownerNote: $('owner-note'),
-    add: $('add'), newItem: $('new-item'), addBtn: $('add-btn'), items: $('items'), clear: $('clear-checked'),
+    add: $('add'), newItem: $('new-item'), addBtn: $('add-btn'), items: $('items'), checkedTools: $('checked-tools'), uncheck: $('uncheck-all'), clear: $('clear-checked'),
     ownerTools: $('owner-tools'), del: $('delete'), confirm: $('confirm-delete'),
     confirmText: $('confirm-text'), delYes: $('delete-yes'), delNo: $('delete-no'), empty: $('empty'),
   };
@@ -379,7 +379,7 @@
       if (li !== ref) el.items.insertBefore(li, ref); else ref = ref.nextSibling;
     }
     existing.forEach((li) => li.remove());
-    el.clear.hidden = !l.items.some((it) => it.checked);
+    el.checkedTools.hidden = !l.items.some((it) => it.checked);
   }
 
   // Hauteur du texte d'un élément : celle de son contenu, plafonnée à 3 lignes (CSS).
@@ -743,6 +743,16 @@
     const l = currentList();
     if (l && isMine(l) && r.checked) patchList({ color: r.value });
   }));
+
+  // Courses récurrentes : tout repasse à faire, chaque élément reprend sa place.
+  el.uncheck.addEventListener('click', () => {
+    const l = currentList();
+    if (!l) return;
+    const ids = l.items.filter((it) => it.checked).map((it) => it.id);
+    l.items.forEach((it) => { it.checked = false; });
+    renderItems(l);
+    ids.forEach((id) => send('PATCH', '/api/items/' + id, { checked: false }, [id]));
+  });
 
   el.clear.addEventListener('click', () => {
     const l = currentList();

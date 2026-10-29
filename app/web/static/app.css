@@ -243,8 +243,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .item {
   display: flex;
   align-items: center;
-  padding: 4px 0;
-  min-height: 52px;
+  min-height: 44px;
   border-bottom: 1px solid var(--line);
   transition: box-shadow .2s, background-color .2s, border-color .2s;
 }
@@ -278,9 +277,10 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   flex: 1;
   min-width: 0;
   min-height: 44px;
-  max-height: calc(4.5em + 18px); /* 3 lignes au plus ; au-delà, défilement à l'édition */
-  max-height: calc(3lh + 18px);
-  padding: 9px 2px;
+  max-height: calc(4.5em + 20px); /* 3 lignes au plus ; au-delà, défilement à l'édition */
+  max-height: calc(3lh + 20px);
+  padding: 10px 2px;
+  font-size: 16px;
   border: 0;
   background: transparent;
   resize: none;
@@ -291,8 +291,8 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .text:focus { overflow-y: auto; }
 /* Plus de 3 lignes : la dernière s'estompe, le reste apparaît en touchant le texte. */
 .text.clipped {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 9px));
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 9px));
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 10px));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 10px));
 }
 .text:focus { outline: none; }
 .item:focus-within { border-bottom-color: rgba(46, 46, 44, .22); }
@@ -312,6 +312,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 
 .list-foot { margin-top: 28px; display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
 .list-foot button { font-size: 15px; color: var(--muted); }
+.checked-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .owner-tools { display: flex; flex-direction: column; gap: 28px; align-items: flex-start; }
 /* Pastilles : zone tactile de 44 px, rond visible de 32 px. 4 × 2 sur téléphone, 8 en ligne sinon. */
 .colors { display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; margin: 0; padding: 0; border: 0; }
