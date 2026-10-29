@@ -244,7 +244,7 @@ func TestMoveItem(t *testing.T) {
 	}
 }
 
-// « Vider les cochés » renvoyé tard (file hors ligne) : seuls les éléments vus cochés
+// « Supprimer les cochés » renvoyé tard (file hors ligne) : seuls les éléments vus cochés
 // par le client partent, et seulement s'ils le sont encore.
 func TestClearCheckedOnlySentIDs(t *testing.T) {
 	h := newHarness(t)

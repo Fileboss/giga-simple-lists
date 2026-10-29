@@ -20,7 +20,7 @@ const (
 	defaultListName  = "Nouvelle liste"
 	maxBodyBytes     = 16 << 10
 	maxUserNameRunes = 32
-	maxClearIDs      = 200 // par requête « vider les cochés » (tient dans maxBodyBytes)
+	maxClearIDs      = 200 // par requête « supprimer les cochés » (tient dans maxBodyBytes)
 )
 
 var (
