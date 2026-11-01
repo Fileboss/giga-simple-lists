@@ -3,7 +3,7 @@
 # ni shell ni gestionnaire de paquets. Le healthcheck est une sous-commande du binaire.
 # Contrat : uid 1000, base dans /data/listes.db, port 5240, GET /healthz, LISTES_ORIGIN obligatoire.
 
-FROM golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS build
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src
 COPY app/go.mod app/go.sum ./
 RUN go mod download && go mod verify
