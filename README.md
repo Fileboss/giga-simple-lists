@@ -17,6 +17,10 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 
 ![Une liste partagée par un autre compte : même liste, modifiable par les deux](docs/screenshots/liste-partagee.png)
 
+<p align="center">
+  <img src="docs/screenshots/telephone.png" width="620" alt="Sur téléphone : la liste de courses et la liste du jour, onglets en haut, cases à cocher à portée de pouce">
+</p>
+
 Captures faites sur des données inventées.
 
 ## Déploiement
