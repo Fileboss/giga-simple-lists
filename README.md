@@ -3,6 +3,8 @@
 Des listes à cocher, partagées en temps réel, à auto-héberger. Courses, choses à faire aujourd'hui,
 projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujours modifiable.
 
+![Une liste de courses : éléments à cocher, cochés en bas, onglets des autres listes en haut](docs/screenshots/courses.png)
+
 - Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
   rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
   éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
@@ -12,6 +14,10 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
   sans réseau sont renvoyées au retour de la connexion.
 - Appli web installable sur l'écran d'accueil (iOS, Android), interface en français.
 - Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo.
+
+![Une liste partagée par un autre compte : même liste, modifiable par les deux](docs/screenshots/liste-partagee.png)
+
+Captures faites sur des données inventées.
 
 ## Déploiement
 
