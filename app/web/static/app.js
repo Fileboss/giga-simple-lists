@@ -379,7 +379,12 @@
       if (li !== ref) el.items.insertBefore(li, ref); else ref = ref.nextSibling;
     }
     existing.forEach((li) => li.remove());
-    el.checkedTools.hidden = !l.items.some((it) => it.checked);
+    // Un élément coché suffit pour proposer de tout décocher (courses récurrentes) ;
+    // sinon on propose de tout cocher.
+    const anyChecked = l.items.some((it) => it.checked);
+    el.checkedTools.hidden = !l.items.length;
+    el.clear.hidden = !anyChecked;
+    el.uncheck.textContent = anyChecked ? 'Tout décocher' : 'Tout cocher';
   }
 
   // Hauteur du texte d'un élément : celle de son contenu, plafonnée à 3 lignes (CSS).
@@ -745,13 +750,15 @@
   }));
 
   // Courses récurrentes : tout repasse à faire, chaque élément reprend sa place.
+  // Si rien n'est coché, le même bouton coche tout.
   el.uncheck.addEventListener('click', () => {
     const l = currentList();
     if (!l) return;
-    const ids = l.items.filter((it) => it.checked).map((it) => it.id);
-    l.items.forEach((it) => { it.checked = false; });
+    const checked = !l.items.some((it) => it.checked);
+    const ids = l.items.filter((it) => it.checked !== checked).map((it) => it.id);
+    l.items.forEach((it) => { it.checked = checked; });
     renderItems(l);
-    ids.forEach((id) => send('PATCH', '/api/items/' + id, { checked: false }, [id]));
+    ids.forEach((id) => send('PATCH', '/api/items/' + id, { checked }, [id]));
   });
 
   el.clear.addEventListener('click', () => {
