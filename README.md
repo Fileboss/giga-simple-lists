@@ -8,7 +8,9 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
   rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
   éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
-- Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les éléments cochés, « Tout décocher » les remet à faire (courses récurrentes).
+- Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les
+  éléments cochés, « Tout décocher » les remet à faire (courses récurrentes). Quand rien n'est
+  coché, le même bouton devient « Tout cocher ».
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
 - Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
   sans réseau sont renvoyées au retour de la connexion.
@@ -161,9 +163,10 @@ fait moins de 20 Mo avant de la publier.
   constant et message unique ; blocage par IP, simple ralentissement par compte (plafonné à 1 min,
   pour qu'un tiers ne puisse pas bloquer un compte), stockés en base ; cookie `__Host-session`
   (seul le hash est en base), Origin + Sec-Fetch-Site + jeton CSRF, CSP sans inline.
-  `X-Forwarded-For` n'est lu que depuis 127.0.0.1 ou la passerelle Docker du réseau `listes`.
+  `X-Forwarded-For` n'est lu que depuis 127.0.0.1 ou une adresse de `LISTES_TRUSTED_PROXIES`.
 - **Isolation** (une faille dans l'appli ne doit mener nulle part) : distroless sans shell,
   non-root, base plafonnée à 50 Mo (507 « Stockage plein » au-delà, lecture intacte), journal
   applicatif limité à une ligne par minute pour un même message. Le déploiement doit ajouter
-  `cap_drop: ALL`, `read_only`, un seul volume, `pids_limit`, `nofile`, des journaux bornés et
-  bloquer toute connexion sortante : l'appli n'en a besoin d'aucune.
+  `cap_drop: ALL`, `no-new-privileges`, `read_only`, un seul volume, `pids_limit`, `nofile`, des
+  journaux bornés, un port publié sur `127.0.0.1`, et bloquer toute connexion sortante : l'appli
+  n'en a besoin d'aucune.
