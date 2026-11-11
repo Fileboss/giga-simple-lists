@@ -35,7 +35,7 @@
   <p id="owner-note" class="owner-note" hidden></p>
 
   <form id="add" class="add" autocomplete="off">
-    <input id="new-item" maxlength="{{.MaxItemText}}" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done">
+    <input id="new-item" type="text" maxlength="{{.MaxItemText}}" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true">
     <button id="add-btn" type="submit" class="add-btn">Ajouter</button>
   </form>
 

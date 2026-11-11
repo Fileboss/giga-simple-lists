@@ -4,3 +4,5 @@ infra/
 # Données et configuration locales.
 .env
 data/
+# macOS
+.DS_Store
