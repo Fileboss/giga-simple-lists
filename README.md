@@ -11,6 +11,9 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les
   éléments cochés, « Tout décocher » les remet à faire (courses récurrentes). Quand rien n'est
   coché, le même bouton devient « Tout cocher ».
+- Catégories : « # Fruits » dans le champ d'ajout crée un titre qui regroupe les éléments placés
+  sous lui (un seul niveau). Elle ne se coche pas, mais se raye quand tous ses éléments sont
+  cochés, et se déplace avec eux. Coller plusieurs lignes ajoute un élément par ligne.
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
 - Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
   sans réseau sont renvoyées au retour de la connexion.

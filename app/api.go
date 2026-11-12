@@ -125,8 +125,9 @@ func (a *App) apiCreateItem(w http.ResponseWriter, r *http.Request, s *session) 
 		return
 	}
 	var in struct {
-		Nonce string `json:"nonce"`
-		Text  string `json:"text"`
+		Nonce    string `json:"nonce"`
+		Text     string `json:"text"`
+		Category bool   `json:"category"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		writeErr(w, err)
@@ -137,7 +138,7 @@ func (a *App) apiCreateItem(w http.ResponseWriter, r *http.Request, s *session) 
 		var l *List
 		var created bool
 		var err error
-		it, l, created, err = createItem(tx, s.UserID, listID, in.Nonce, in.Text)
+		it, l, created, err = createItem(tx, s.UserID, listID, in.Nonce, in.Text, in.Category)
 		if err != nil || !created {
 			return nil, err
 		}

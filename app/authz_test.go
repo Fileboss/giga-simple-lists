@@ -244,6 +244,50 @@ func TestMoveItem(t *testing.T) {
 	}
 }
 
+// Catégories : jamais cochées, déplacées avec leurs éléments, et seulement entre deux
+// catégories (une catégorie n'en coupe jamais une autre en deux).
+func TestCategories(t *testing.T) {
+	h := newHarness(t)
+	sa := h.session(h.addUser("alice"))
+	l := h.createList(sa, "Courses")
+	cat := func(text string) *Item {
+		var it Item
+		h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/items", map[string]any{"nonce": newID(), "text": text, "category": true}, &it)
+		if !it.Category {
+			t.Fatalf("%s : pas une catégorie", text)
+		}
+		return &it
+	}
+	h.createItem(sa, l.ID, "a")
+	f := cat("F")
+	h.createItem(sa, l.ID, "b")
+	h.createItem(sa, l.ID, "c")
+	g := cat("G")
+	d := h.createItem(sa, l.ID, "d")
+	order := func() string {
+		var s string
+		for _, it := range h.state(sa).Lists[0].Items {
+			s += it.Text
+		}
+		return s
+	}
+	h.expect(http.StatusBadRequest, sa, "PATCH", "/api/items/"+f.ID, map[string]any{"checked": true})
+	h.expect(http.StatusOK, sa, "POST", "/api/items/"+f.ID+"/move", map[string]any{"before": ""})
+	if o := order(); o != "aGdFbc" {
+		t.Fatalf("ordre : %s", o)
+	}
+	h.expect(http.StatusBadRequest, sa, "POST", "/api/items/"+f.ID+"/move", map[string]any{"before": d.ID})
+	h.expect(http.StatusOK, sa, "POST", "/api/items/"+f.ID+"/move", map[string]any{"before": g.ID})
+	if o := order(); o != "aFbcGd" {
+		t.Fatalf("ordre : %s", o)
+	}
+	// Un élément, lui, passe d'une catégorie à l'autre.
+	h.expect(http.StatusOK, sa, "POST", "/api/items/"+d.ID+"/move", map[string]any{"before": g.ID})
+	if o := order(); o != "aFbcdG" {
+		t.Fatalf("ordre : %s", o)
+	}
+}
+
 // « Supprimer les cochés » renvoyé tard (file hors ligne) : seuls les éléments vus cochés
 // par le client partent, et seulement s'ils le sont encore.
 func TestClearCheckedOnlySentIDs(t *testing.T) {

@@ -49,6 +49,7 @@ type Item struct {
 	ListID    string `json:"list_id"`
 	Text      string `json:"text"`
 	Checked   bool   `json:"checked"`
+	Category  bool   `json:"category"`
 	Position  int64  `json:"position"`
 	UpdatedAt int64  `json:"updated_at"`
 }
@@ -152,7 +153,7 @@ func visibleLists(q querier, userID string) ([]*List, error) {
 const listSelect = `SELECT l.id, l.owner_id, u.name, l.name, l.color, l.shared, l.position
 	FROM lists l JOIN users u ON u.id = l.owner_id`
 
-const itemSelect = `SELECT id, list_id, text, checked, position, updated_at FROM items`
+const itemSelect = `SELECT id, list_id, text, checked, category, position, updated_at FROM items`
 
 type scanner interface{ Scan(...any) error }
 
@@ -164,7 +165,7 @@ func scanList(s scanner) (*List, error) {
 
 func scanItem(s scanner) (*Item, error) {
 	var it Item
-	err := s.Scan(&it.ID, &it.ListID, &it.Text, &it.Checked, &it.Position, &it.UpdatedAt)
+	err := s.Scan(&it.ID, &it.ListID, &it.Text, &it.Checked, &it.Category, &it.Position, &it.UpdatedAt)
 	return &it, err
 }
 
@@ -347,7 +348,7 @@ func deleteList(tx querier, userID, listID string) (*List, error) {
 	return l, err
 }
 
-func createItem(tx querier, userID, listID, nonce, text string) (it *Item, l *List, created bool, err error) {
+func createItem(tx querier, userID, listID, nonce, text string, category bool) (it *Item, l *List, created bool, err error) {
 	l, err = accessList(tx, userID, listID)
 	if err != nil {
 		return nil, nil, false, err
@@ -378,8 +379,8 @@ func createItem(tx querier, userID, listID, nonce, text string) (it *Item, l *Li
 		return nil, nil, false, errLimit
 	}
 	t := nowMs()
-	if _, err := tx.Exec(`INSERT INTO items (id, list_id, text, checked, position, updated_at, updated_by)
-		VALUES (?, ?, ?, 0, ?, ?, ?)`, id, l.ID, text, pos+1, t, userID); err != nil {
+	if _, err := tx.Exec(`INSERT INTO items (id, list_id, text, checked, category, position, updated_at, updated_by)
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?)`, id, l.ID, text, category, pos+1, t, userID); err != nil {
 		return nil, nil, false, err
 	}
 	it, err = loadItem(tx, id)
@@ -409,6 +410,9 @@ func updateItem(tx querier, userID, itemID string, p itemPatch) (it *Item, l *Li
 		it.Text = text
 	}
 	if p.Checked != nil {
+		if *p.Checked && it.Category {
+			return nil, nil, false, invalidError("une catégorie ne se coche pas")
+		}
 		it.Checked = *p.Checked
 	}
 	it.UpdatedAt = nowMs()
@@ -424,7 +428,9 @@ type itemPosition struct {
 
 // moveItem place l'élément juste avant beforeID (ou en dernier si beforeID est vide),
 // puis renumérote les positions de la liste. L'affichage regroupant cochés et non
-// cochés, l'ordre relatif à l'intérieur de chaque groupe est celui voulu. beforeID
+// cochés dans chaque catégorie, l'ordre relatif à l'intérieur de chaque groupe est
+// celui voulu. Une catégorie se déplace avec ses éléments, et seulement avant une
+// autre catégorie (ou en dernier) : elle ne coupe jamais une autre en deux. beforeID
 // doit être un élément de la même liste, retrouvée côté serveur.
 func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPosition, error) {
 	it, l, err := accessItem(tx, userID, itemID)
@@ -438,17 +444,12 @@ func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPositio
 	if err != nil {
 		return nil, nil, err
 	}
-	order := make([]Item, 0, len(items))
-	for _, x := range items {
-		if x.ID != it.ID {
-			order = append(order, x)
-		}
-	}
+	block, order := splitBlock(items, it.ID)
 	at := len(order)
 	if beforeID != "" {
 		at = -1
 		for i, x := range order {
-			if x.ID == beforeID {
+			if x.ID == beforeID && (!it.Category || x.Category) {
 				at = i
 			}
 		}
@@ -456,7 +457,7 @@ func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPositio
 			return nil, nil, invalidError("position invalide")
 		}
 	}
-	order = append(order[:at], append([]Item{*it}, order[at:]...)...)
+	order = append(order[:at], append(block, order[at:]...)...)
 	var changed []itemPosition
 	for i, x := range order {
 		if pos := int64(i + 1); x.Position != pos {
@@ -467,6 +468,26 @@ func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPositio
 		}
 	}
 	return l, changed, nil
+}
+
+// splitBlock sépare de items (triés par position) l'élément id, suivi de ses éléments
+// si c'est une catégorie, et le reste de la liste.
+func splitBlock(items []Item, id string) (block, rest []Item) {
+	start := 0
+	for i, x := range items {
+		if x.ID == id {
+			start = i
+		}
+	}
+	end := start + 1
+	if items[start].Category {
+		for end < len(items) && !items[end].Category {
+			end++
+		}
+	}
+	block = append([]Item{}, items[start:end]...)
+	rest = append(append([]Item{}, items[:start]...), items[end:]...)
+	return block, rest
 }
 
 func deleteItem(tx querier, userID, itemID string) (*Item, *List, error) {

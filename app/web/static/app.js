@@ -364,27 +364,55 @@
   // perdre le focus d'un texte en cours de modification.
   function renderItems(l) {
     scheduleSave();
-    if (drag) { drag.renderLater = true; return; }
-    const ordered = [...l.items].sort((a, b) => (a.checked - b.checked) || (a.position - b.position));
+    if (drag) return; // endDrag rend la liste au lâcher
+    const { ordered, done } = displayOrder(l);
     const existing = new Map([...el.items.children].map((li) => [li.dataset.id, li]));
     let ref = el.items.firstChild;
-    for (const it of ordered) {
+    let grouped = false; // chaque catégorie et ses éléments forment une bande (classe grouped)
+    ordered.forEach((it, i) => {
       const li = existing.get(it.id) || makeRow(it.id);
       existing.delete(it.id);
-      li.classList.toggle('done', it.checked);
+      if (it.category) grouped = true;
+      const next = ordered[i + 1];
+      li.classList.toggle('grouped', grouped);
+      li.classList.toggle('group-end', grouped && (!next || !!next.category));
+      li.classList.toggle('category', !!it.category);
+      li.classList.toggle('done', it.category ? done.has(it.id) : it.checked);
       li.querySelector('.check input').checked = it.checked;
       const text = li.querySelector('.text');
+      text.setAttribute('aria-label', it.category ? 'Nom de la catégorie' : 'Texte de l’élément');
       if (document.activeElement !== text && text.value !== it.text) text.value = it.text;
       fitText(text);
       if (li !== ref) el.items.insertBefore(li, ref); else ref = ref.nextSibling;
-    }
+    });
     existing.forEach((li) => li.remove());
     // Un élément coché suffit pour proposer de tout décocher (courses récurrentes) ;
     // sinon on propose de tout cocher.
     const anyChecked = l.items.some((it) => it.checked);
-    el.checkedTools.hidden = !l.items.length;
+    el.checkedTools.hidden = !l.items.some((it) => !it.category);
     el.clear.hidden = !anyChecked;
     el.uncheck.textContent = anyChecked ? 'Tout décocher' : 'Tout cocher';
+  }
+
+  // Ordre affiché : les éléments placés avant la première catégorie, puis chaque
+  // catégorie suivie des siens ; dans chaque groupe, les non cochés d'abord. Une
+  // catégorie est rayée (done) quand elle a des éléments et qu'ils sont tous cochés.
+  function displayOrder(l) {
+    const groups = [{ head: null, items: [] }];
+    [...l.items].sort((a, b) => a.position - b.position).forEach((it) => {
+      if (it.category) groups.push({ head: it, items: [] });
+      else groups[groups.length - 1].items.push(it);
+    });
+    const ordered = [];
+    const done = new Set();
+    for (const { head, items } of groups) {
+      if (head) {
+        ordered.push(head);
+        if (items.length && items.every((it) => it.checked)) done.add(head.id);
+      }
+      ordered.push(...items.sort((a, b) => a.checked - b.checked));
+    }
+    return { ordered, done };
   }
 
   // Hauteur du texte d'un élément : celle de son contenu, plafonnée à 3 lignes (CSS).
@@ -421,7 +449,6 @@
     text.maxLength = el.newItem.maxLength;
     text.autocomplete = 'off';
     text.enterKeyHint = 'done';
-    text.setAttribute('aria-label', 'Texte de l’élément');
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'remove';
@@ -434,15 +461,21 @@
   // ---------------------------------------------------------------------------
   // Actions
 
-  async function addItem(text) {
+  async function addItem({ text, category }) {
     const l = currentList();
     if (!l) return;
     const nonce = randomHex();
     const id = await creationID(nonce);
     const pos = l.items.reduce((m, it) => Math.max(m, it.position), 0) + 1;
-    l.items.push({ id, list_id: l.id, text, checked: false, position: pos, updated_at: Date.now() });
+    l.items.push({ id, list_id: l.id, text, checked: false, category, position: pos, updated_at: Date.now() });
     renderItems(l);
-    send('POST', '/api/lists/' + l.id + '/items', { nonce, text }, [id]);
+    send('POST', '/api/lists/' + l.id + '/items', { nonce, text, category }, [id]);
+  }
+
+  // « # Fruits » (ou « ## Fruits », titre Markdown collé) crée la catégorie « Fruits ».
+  function parseEntry(line) {
+    const m = /^#+\s*(.*)$/.exec(line);
+    return m ? { text: m[1].trim(), category: true } : { text: line, category: false };
   }
 
   function findItem(id) {
@@ -452,7 +485,7 @@
 
   function setChecked(id, checked) {
     const it = findItem(id);
-    if (!it || it.checked === checked) return;
+    if (!it || it.category || it.checked === checked) return;
     it.checked = checked;
     renderItems(currentList());
     send('PATCH', '/api/items/' + id, { checked }, [id]);
@@ -474,30 +507,125 @@
     renderItems(l);
   }
 
-  // Même calcul que moveItem côté serveur : l'élément passe juste avant `before`
-  // (ou en dernier), puis les positions sont renumérotées.
+  // Même calcul que moveItem côté serveur : l'élément (avec ses éléments si c'est une
+  // catégorie) passe juste avant `before` (ou en dernier), puis les positions sont renumérotées.
   function moveItem(id, before) {
     const l = currentList();
     if (!l) return;
     const order = [...l.items].sort((a, b) => a.position - b.position);
-    const it = order.find((x) => x.id === id);
-    if (!it) return;
-    const rest = order.filter((x) => x !== it);
-    const at = before ? rest.findIndex((x) => x.id === before) : rest.length;
+    const start = order.findIndex((x) => x.id === id);
+    if (start < 0) return;
+    let end = start + 1;
+    if (order[start].category) while (end < order.length && !order[end].category) end++;
+    const block = order.splice(start, end - start);
+    const at = before ? order.findIndex((x) => x.id === before && (!block[0].category || x.category)) : order.length;
     if (at < 0) return;
-    rest.splice(at, 0, it);
-    rest.forEach((x, i) => { x.position = i + 1; });
+    order.splice(at, 0, ...block);
+    order.forEach((x, i) => { x.position = i + 1; });
     send('POST', '/api/items/' + id + '/move', { before: before || '' }, [id]);
   }
 
-  // Voisins du même groupe (cochés ou non) que la ligne li, dans l'ordre affiché.
-  const groupOf = (li) => [...el.items.children].filter((x) => x.classList.contains('done') === li.classList.contains('done'));
+  const isHead = (li) => li.classList.contains('category');
+  const isDone = (li) => li.classList.contains('done');
 
-  // Après un déplacement dans le DOM : l'élément suivant du groupe donne la cible.
+  // Cible d'un déplacement : la ligne suivante de même rang dans l'ordre affiché, c'est-à-dire
+  // la catégorie suivante, ou pour un élément le suivant de même état (coché ou non) s'il
+  // vient avant. Le placer juste avant (en position) le remet exactement là où il est affiché.
+  function nextTarget(li) {
+    for (let x = li.nextElementSibling; x; x = x.nextElementSibling) {
+      if (isHead(x) || (!isHead(li) && isDone(x) === isDone(li))) return x.dataset.id;
+    }
+    return '';
+  }
+
+  // Catégorie tenue : ses éléments se replient (classe carried) et voyagent avec elle.
+  function carry(li, on) {
+    const kids = [];
+    for (let x = li.nextElementSibling; x && !isHead(x); x = x.nextElementSibling) {
+      x.classList.toggle('carried', on);
+      kids.push(x);
+    }
+    return kids;
+  }
+
+  // Au doigt, le repli se voit : les éléments glissent sous le titre en s'aplatissant
+  // (classe folding : visibles le temps de l'animation), puis se déplient au lâcher, à
+  // leur nouvelle place. Le titre tenu montre alors une pile de cartes (classe stack).
+  const folded = (h) => [{ height: h + 'px', opacity: 1, transform: 'none' }, { height: '0px', opacity: 0, transform: 'translateY(-16px)' }];
+  function fold(li) {
+    const heights = [];
+    for (let x = li.nextElementSibling; x && !isHead(x); x = x.nextElementSibling) heights.push(x.offsetHeight);
+    const kids = carry(li, true);
+    li.classList.toggle('stack', kids.length > 0);
+    if (reduceMotion) return;
+    kids.forEach((x, i) => {
+      x.classList.add('folding');
+      const a = x.animate(folded(heights[i]), { duration: 220, easing: EASE, fill: 'forwards' });
+      a.onfinish = () => { x.classList.remove('folding'); a.cancel(); };
+    });
+  }
+  function unfold(li) {
+    li.classList.remove('stack');
+    const kids = carry(li, false);
+    kids.forEach((x) => {
+      x.getAnimations().forEach((a) => a.cancel());
+      x.classList.remove('folding');
+    });
+    return kids;
+  }
+  // Après le rendu : les éléments, à leur nouvelle place, s'ouvrent depuis le titre.
+  function unfoldAnimation(kids) {
+    if (reduceMotion) return;
+    kids.forEach((x) => {
+      const h = x.offsetHeight;
+      x.classList.add('folding');
+      const a = x.animate(folded(h).reverse(), { duration: 220, easing: EASE });
+      a.onfinish = a.oncancel = () => x.classList.remove('folding');
+    });
+  }
+  const blockEnd = (li) => {
+    let e = li;
+    while (e.nextElementSibling && e.nextElementSibling.classList.contains('carried')) e = e.nextElementSibling;
+    return e;
+  };
+
+  // Lignes que li doit franchir pour avancer d'un cran (dir = 1 vers le bas, -1 vers le
+  // haut), dans l'ordre du document, ou null si elle ne peut pas aller plus loin.
+  // Un élément ne quitte jamais sa zone (non cochés en haut du groupe, cochés en bas) :
+  // il échange sa place avec un voisin de même état, ou saute d'un coup les lignes de
+  // l'autre état et un titre de catégorie pour entrer dans le groupe voisin. Une catégorie
+  // (repliée) franchit une catégorie entière, sans jamais passer au-dessus des éléments
+  // placés avant la première catégorie.
+  function jumpOver(li, dir) {
+    const step = (x) => (dir > 0 ? x.nextElementSibling : x.previousElementSibling);
+    const run = [];
+    if (isHead(li)) {
+      for (let x = step(dir > 0 ? blockEnd(li) : li); x; x = step(x)) {
+        if (dir > 0 && isHead(x) && run.length) break;
+        run.push(x);
+        if (dir < 0 && isHead(x)) return run.reverse();
+      }
+      return dir > 0 && run.length ? run : null;
+    }
+    let crossed = false;
+    for (let x = step(li); x; x = step(x)) {
+      if (isHead(x)) {
+        if (crossed) break;
+        crossed = true;
+      } else if (isDone(x) === isDone(li)) {
+        if (!run.length) return [x];
+        break;
+      } else if (crossed && isDone(li) === dir < 0) {
+        break; // groupe voisin atteint : un non coché s'arrête en haut, un coché en bas
+      }
+      run.push(x);
+    }
+    return crossed ? (dir > 0 ? run : run.reverse()) : null;
+  }
+
+  // Après un déplacement dans le DOM : la ligne suivante de même rang donne la cible.
   function commitRowMove(li, beforeAtStart) {
-    const group = groupOf(li);
-    const next = group[group.indexOf(li) + 1];
-    const before = next ? next.dataset.id : '';
+    const before = nextTarget(li);
     if (before === beforeAtStart) return false;
     moveItem(li.dataset.id, before);
     return true;
@@ -529,10 +657,9 @@
   let drag = null;
   function startDrag(e, handle) {
     const li = handle.closest('.item');
-    const group = groupOf(li);
-    const next = group[group.indexOf(li) + 1];
+    if (isHead(li)) fold(li);
     const top = li.getBoundingClientRect().top;
-    drag = { li, y: e.clientY, grab: e.clientY - top, dy: 0, beforeAtStart: next ? next.dataset.id : '', renderLater: false };
+    drag = { li, y: e.clientY, grab: e.clientY - top, dy: 0, beforeAtStart: nextTarget(li) };
     // Emplacement d'atterrissage : un aplat plus sombre à la place que prendra la ligne.
     drag.slot = document.createElement('div');
     drag.slot.className = 'drop-slot instant';
@@ -551,14 +678,14 @@
   // DOM, sinon le navigateur perdrait la capture du pointeur.
   function dragTo() {
     const li = drag.li;
-    const same = (x) => x && x.classList.contains('done') === li.classList.contains('done');
-    const mid = (x) => x.offsetTop + x.offsetHeight / 2;
+    // Milieu des lignes à franchir : la ligne tenue y passe quand son centre le dépasse.
+    const mid = (rows) => (rows[0].offsetTop + rows.at(-1).offsetTop + rows.at(-1).offsetHeight) / 2;
     const top = drag.y - el.items.getBoundingClientRect().top - drag.grab; // haut voulu, repère de la liste
     const center = top + li.offsetHeight / 2;
-    const prev = li.previousElementSibling;
-    const next = li.nextElementSibling;
-    if (same(prev) && center < mid(prev)) flip([prev], () => li.after(prev));
-    else if (same(next) && center > mid(next)) flip([next], () => li.before(next));
+    const up = jumpOver(li, -1);
+    const down = jumpOver(li, 1);
+    if (up && center < mid(up)) flip(up, () => blockEnd(li).after(...up));
+    else if (down && center > mid(down)) flip(down, () => li.before(...down));
     // La ligne reste sous le doigt, quelle que soit sa place dans la liste.
     drag.dy = top - li.offsetTop;
     li.style.transform = 'translateY(' + drag.dy + 'px)' + LIFT;
@@ -586,8 +713,9 @@
 
   function endDrag(commit) {
     if (!drag) return;
-    const { li, beforeAtStart, renderLater, dy, slot } = drag;
+    const { li, beforeAtStart, dy, slot } = drag;
     drag = null;
+    const kids = isHead(li) ? unfold(li) : [];
     if (reduceMotion) slot.remove();
     else slot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: EASE }).finished.then(() => slot.remove());
     li.style.transform = '';
@@ -596,7 +724,9 @@
     if (!reduceMotion) {
       li.animate([{ transform: 'translateY(' + dy + 'px)' + LIFT }, { transform: 'none' }], { duration: 180, easing: EASE });
     }
-    if (!(commit && commitRowMove(li, beforeAtStart)) || renderLater) renderItems(currentList());
+    if (commit) commitRowMove(li, beforeAtStart);
+    renderItems(currentList()); // replace aussi les éléments d'une catégorie déplacée
+    unfoldAnimation(kids);
   }
 
   function removeItem(id) {
@@ -667,7 +797,32 @@
     el.newItem.value = '';
     syncAddBtn();
     el.newItem.focus(); // le focus reste dans le champ pour enchaîner
-    addItem(text);
+    const entry = parseEntry(text);
+    if (entry.text) addItem(entry);
+  });
+
+  // Coller plusieurs lignes (une liste copiée d'ailleurs) ajoute un élément par ligne,
+  // sans les puces ni cases à cocher du texte d'origine ; une ligne « # … » ajoute une
+  // catégorie. Une seule ligne reste dans le champ.
+  const splitLines = (s) => s.split(/\r\n|\r|\n/)
+    .map((x) => x.trim().replace(/^(?:[-*•◦▪‣–—·]\s+|\[[ xX]?\]\s*)/, '').trim().slice(0, el.newItem.maxLength))
+    .filter((x) => x !== '');
+  el.newItem.addEventListener('paste', async (e) => {
+    const pasted = e.clipboardData && e.clipboardData.getData('text');
+    if (!pasted || !/[\r\n]/.test(pasted)) return;
+    e.preventDefault();
+    const f = el.newItem;
+    const lines = splitLines(f.value.slice(0, f.selectionStart) + pasted + f.value.slice(f.selectionEnd));
+    if (lines.length < 2) {
+      f.value = lines[0] || '';
+      syncAddBtn();
+      return;
+    }
+    f.value = '';
+    syncAddBtn();
+    for (const entry of lines.map(parseEntry)) {
+      if (entry.text) await addItem(entry); // l'une après l'autre, pour garder l'ordre
+    }
   });
 
   el.items.addEventListener('change', (e) => {
@@ -690,12 +845,13 @@
     if (!h || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
     e.preventDefault();
     const li = h.closest('.item');
-    const group = groupOf(li);
-    const i = group.indexOf(li);
-    const beforeAtStart = group[i + 1] ? group[i + 1].dataset.id : '';
-    if (e.key === 'ArrowUp' && i > 0) flip([li, group[i - 1]], () => el.items.insertBefore(li, group[i - 1]));
-    else if (e.key === 'ArrowDown' && i < group.length - 1) flip([li, group[i + 1]], () => group[i + 1].after(li));
-    else return;
+    const dir = e.key === 'ArrowUp' ? -1 : 1;
+    const beforeAtStart = nextTarget(li);
+    if (isHead(li)) carry(li, true);
+    const run = jumpOver(li, dir);
+    if (run) flip([li, ...run], () => (dir < 0 ? blockEnd(li).after(...run) : li.before(...run)));
+    carry(li, false);
+    if (!run) return;
     commitRowMove(li, beforeAtStart);
     renderItems(currentList());
     h.focus();
@@ -755,8 +911,9 @@
     const l = currentList();
     if (!l) return;
     const checked = !l.items.some((it) => it.checked);
-    const ids = l.items.filter((it) => it.checked !== checked).map((it) => it.id);
-    l.items.forEach((it) => { it.checked = checked; });
+    const items = l.items.filter((it) => !it.category && it.checked !== checked);
+    const ids = items.map((it) => it.id);
+    items.forEach((it) => { it.checked = checked; });
     renderItems(l);
     ids.forEach((id) => send('PATCH', '/api/items/' + id, { checked }, [id]));
   });

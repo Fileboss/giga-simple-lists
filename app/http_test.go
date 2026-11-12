@@ -305,16 +305,18 @@ func TestColorContrast(t *testing.T) {
 		t.Fatalf("%d couleurs", len(colors))
 	}
 	for _, c := range colors {
-		if r := contrast("#000000", c.Hex); r < 7 {
-			t.Errorf("%s : texte noir %.2f:1", c.Key, r)
+		for _, bg := range []string{c.Hex, c.Deep} {
+			if r := contrast("#000000", bg); r < 7 {
+				t.Errorf("%s %s : texte noir %.2f:1", c.Key, bg, r)
+			}
+			if r := contrast(inkColor, bg); r < 7 {
+				t.Errorf("%s %s : texte %.2f:1", c.Key, bg, r)
+			}
+			if r := contrast(checkedGray, bg); r < 4.5 {
+				t.Errorf("%s %s : gris des cochés %.2f:1", c.Key, bg, r)
+			}
 		}
-		if r := contrast(inkColor, c.Hex); r < 7 {
-			t.Errorf("%s : texte %.2f:1", c.Key, r)
-		}
-		if r := contrast(checkedGray, c.Hex); r < 4.5 {
-			t.Errorf("%s : gris des cochés %.2f:1", c.Key, r)
-		}
-		rule := fmt.Sprintf(".c-%s { background-color: %s; }", c.Key, c.Hex)
+		rule := fmt.Sprintf(".c-%s { background-color: %s; --tint: %s; --deep: %s; }", c.Key, c.Hex, c.Hex, c.Deep)
 		if !strings.Contains(string(css), rule) {
 			t.Errorf("app.css : règle %q absente", rule)
 		}
@@ -391,7 +393,7 @@ func TestDatabasePragmas(t *testing.T) {
 	h2 := newHarnessAt(t, h.dir)
 	var v int
 	h2.db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 2 {
+	if v != 3 {
 		t.Fatalf("user_version=%d", v)
 	}
 	var maxPages int
