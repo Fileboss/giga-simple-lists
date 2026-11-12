@@ -32,7 +32,6 @@
     <button id="switcher" class="switcher" type="button" aria-haspopup="dialog" aria-label="Changer de liste"><span id="switcher-name" class="name"></span><span class="chev" aria-hidden="true"></span></button>
     <input id="title" class="title" maxlength="{{.MaxListName}}" aria-label="Nom de la liste" autocomplete="off" enterkeyhint="done">
     <label class="share"><input id="share" type="checkbox"> Partager</label>
-    <div id="pager" class="pager" aria-hidden="true"></div>
   </div>
   <p id="owner-note" class="owner-note" hidden></p>
 
@@ -68,6 +67,7 @@
 <!-- Téléphone : toutes les listes, dans un panneau qui monte du bas. -->
 <dialog id="sheet" class="sheet" aria-label="Listes">
   <div class="sheet-body">
+    <button id="sheet-grip" class="sheet-grip" type="button" aria-label="Fermer"></button>
     <div class="sheet-scroll">
       <nav id="sheet-lists" class="sheet-lists" aria-label="Listes"></nav>
       <button id="sheet-up" class="sheet-more up" type="button" hidden></button>

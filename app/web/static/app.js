@@ -13,11 +13,11 @@
     add: $('add'), newItem: $('new-item'), addBtn: $('add-btn'), items: $('items'), checkedTools: $('checked-tools'), uncheck: $('uncheck-all'), clear: $('clear-checked'),
     ownerTools: $('owner-tools'), del: $('delete'), confirm: $('confirm-delete'),
     confirmText: $('confirm-text'), delYes: $('delete-yes'), delNo: $('delete-no'), empty: $('empty'),
-    listHead: $('list-head'), switcher: $('switcher'), switcherName: $('switcher-name'), pager: $('pager'),
+    listHead: $('list-head'), switcher: $('switcher'), switcherName: $('switcher-name'),
     sheet: $('sheet'), sheetLists: $('sheet-lists'), sheetNew: $('sheet-new'), sheetRename: $('sheet-rename'),
-    sheetUp: $('sheet-up'), sheetDown: $('sheet-down'),
+    sheetUp: $('sheet-up'), sheetDown: $('sheet-down'), sheetGrip: $('sheet-grip'),
   };
-  // Téléphone : sélecteur en panneau et balayage à la place des onglets (même seuil que le CSS).
+  // Téléphone : sélecteur en panneau à la place des onglets (même seuil que le CSS).
   const mobile = matchMedia('(max-width: 699px)');
   const DEFAULT_LIST_NAME = document.body.dataset.defaultListName;
   const COLORS = [...document.querySelectorAll('input[name="color"]')].map((i) => i.value);
@@ -63,7 +63,7 @@
   const byId = (id) => lists.find((l) => l.id === id);
   const currentList = () => byId(current);
   const isMine = (l) => l.owner_id === ME;
-  // Ordre des onglets, du panneau et du balayage : les miennes, puis celles partagées avec moi.
+  // Ordre des onglets et du panneau : les miennes, puis celles partagées avec moi.
   const sortedLists = () => [...lists].sort((a, b) => (isMine(b) - isMine(a)) || (a.position - b.position));
 
   let toastTimer;
@@ -314,7 +314,6 @@
     if (document.activeElement !== el.title) el.title.value = l.name;
     el.switcherName.textContent = l.name;
     el.switcher.setAttribute('aria-label', l.name + ' : changer de liste');
-    renderPager();
     const mine = isMine(l);
     el.share.checked = l.shared;
     el.share.disabled = !mine;
@@ -368,17 +367,6 @@
     t.classList.toggle('more-right', right);
     el.tabsPrev.hidden = !left;
     el.tabsNext.hidden = !right;
-  }
-
-  // Points sous le titre : où se trouve la liste affichée parmi celles qu'on fait défiler.
-  function renderPager() {
-    const sorted = sortedLists();
-    el.pager.hidden = sorted.length < 2 || sorted.length > 12;
-    el.pager.replaceChildren(...sorted.map((l) => {
-      const pip = document.createElement('span');
-      pip.className = 'pip' + (l.id === current ? ' on' : '');
-      return pip;
-    }));
   }
 
   // Panneau des listes : toutes d'un coup d'œil, avec le nombre d'éléments à faire.
@@ -894,7 +882,8 @@
 
   // Téléphone : le titre ouvre le panneau des listes ; toucher hors du panneau le ferme.
   el.switcher.addEventListener('click', openSheet);
-  el.sheet.addEventListener('click', (e) => { if (e.target === el.sheet) el.sheet.close(); });
+  el.sheet.addEventListener('click', (e) => { if (e.target === el.sheet) closeSheet(0); });
+  el.sheet.addEventListener('cancel', (e) => { e.preventDefault(); closeSheet(0); }); // Échap
   el.sheetLists.addEventListener('scroll', updateSheetEdges, { passive: true });
   el.sheetUp.addEventListener('click', () => pageSheet(-1));
   el.sheetDown.addEventListener('click', () => pageSheet(1));
@@ -908,67 +897,50 @@
   el.sheetRename.addEventListener('click', () => { el.sheet.close(); editTitle(); });
   mobile.addEventListener('change', () => { if (!mobile.matches && el.sheet.open) el.sheet.close(); });
 
-  // Téléphone : glisser la liste vers la gauche ou la droite ouvre la voisine, dans
-  // l'ordre du panneau. La liste suit le doigt ; sans voisine de ce côté, elle résiste.
-  // Rien ne part des bords de l'écran (geste « retour » du système), d'une poignée,
-  // d'un champ en cours d'édition ni d'un geste d'abord vertical (défilement).
-  let swipe = null;
-  const neighbour = (dir) => {
-    const sorted = sortedLists();
-    return sorted[sorted.findIndex((l) => l.id === current) + dir] || null;
-  };
-  el.list.addEventListener('pointerdown', (e) => {
-    if (!mobile.matches || e.pointerType !== 'touch' || drag || swipe) return;
-    if (e.clientX < 24 || e.clientX > innerWidth - 24) return;
-    if (e.target.closest('.handle') || e.target === document.activeElement) return;
-    swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp, on: false, shown: 0 };
-  });
-  el.list.addEventListener('pointermove', (e) => {
-    if (!swipe || e.pointerId !== swipe.id) return;
-    const dx = e.clientX - swipe.x;
-    const dy = e.clientY - swipe.y;
-    if (!swipe.on) {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }
-      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      swipe.on = true;
-      el.list.setPointerCapture(e.pointerId);
-    }
-    swipe.shown = neighbour(dx < 0 ? 1 : -1) ? dx : dx / 4;
-    el.list.style.transform = 'translateX(' + swipe.shown + 'px)';
-  });
-  function endSwipe(e) {
-    if (!swipe || e.pointerId !== swipe.id) return;
-    const { on, shown, x, t } = swipe;
-    swipe = null;
-    if (!on) return;
-    const dx = e.clientX - x;
-    const dir = dx < 0 ? 1 : -1;
-    const next = neighbour(dir);
-    const far = Math.abs(dx) > innerWidth * 0.3 || (Math.abs(dx) > 40 && e.timeStamp - t < 250);
-    if (next && far && e.type === 'pointerup') return slideTo(next.id, dir, shown);
-    el.list.style.transform = '';
-    if (!reduceMotion) el.list.animate([{ transform: 'translateX(' + shown + 'px)' }, { transform: 'none' }], { duration: 200, easing: EASE });
+  // Poignée du panneau : tirée vers le bas, elle le replie (il suit le doigt, le fond
+  // s'éclaircit) ; lâchée avant le quart de sa hauteur, sans geste vif, il remonte.
+  // Un simple toucher ferme aussi.
+  let pull = null;
+  function resetPull() {
+    el.sheet.classList.remove('pulling');
+    el.sheet.style.transform = '';
+    el.sheet.style.removeProperty('--pull');
   }
-  el.list.addEventListener('pointerup', endSwipe);
-  el.list.addEventListener('pointercancel', endSwipe);
-
-  // La liste quittée sort du côté du geste, la nouvelle entre par l'autre.
-  function slideTo(id, dir, from) {
-    const show = () => {
-      el.list.style.transform = '';
-      open(id);
-      window.scrollTo(0, 0);
-    };
-    if (reduceMotion) return show();
-    const out = el.list.animate([{ transform: 'translateX(' + from + 'px)' }, { transform: 'translateX(' + -dir * innerWidth + 'px)' }],
-      { duration: 160, easing: 'ease-in', fill: 'forwards' });
-    out.finished.then(() => {
-      show();
-      out.cancel();
-      el.list.animate([{ transform: 'translateX(' + dir * innerWidth * 0.4 + 'px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
-        { duration: 220, easing: EASE });
-    });
+  // Le panneau descend depuis `from` (px), puis se ferme.
+  function closeSheet(from) {
+    if (!el.sheet.open) return;
+    if (reduceMotion) { el.sheet.close(); resetPull(); return; }
+    el.sheet.classList.add('pulling');
+    el.sheet.style.setProperty('--pull', '1');
+    const a = el.sheet.animate([{ transform: 'translateY(' + from + 'px)' }, { transform: 'translateY(100%)' }],
+      { duration: 200, easing: 'ease-in', fill: 'forwards' });
+    a.finished.then(() => { el.sheet.close(); a.cancel(); resetPull(); });
   }
+  el.sheetGrip.addEventListener('pointerdown', (e) => {
+    if (e.button > 0 || pull) return;
+    e.preventDefault();
+    el.sheetGrip.setPointerCapture(e.pointerId);
+    pull = { id: e.pointerId, y: e.clientY, t: e.timeStamp, dy: 0 };
+    el.sheet.classList.add('pulling');
+  });
+  el.sheetGrip.addEventListener('pointermove', (e) => {
+    if (!pull || e.pointerId !== pull.id) return;
+    pull.dy = Math.max(0, e.clientY - pull.y);
+    el.sheet.style.transform = 'translateY(' + pull.dy + 'px)';
+    el.sheet.style.setProperty('--pull', String(Math.min(1, pull.dy / el.sheet.offsetHeight)));
+  });
+  function endPull(e) {
+    if (!pull || e.pointerId !== pull.id) return;
+    const { dy, t } = pull;
+    pull = null;
+    const tap = dy < 6 && e.type === 'pointerup';
+    const flick = dy > 30 && e.timeStamp - t < 250;
+    if (tap || flick || dy > el.sheet.offsetHeight / 4) closeSheet(dy);
+    else resetPull(); // la transition CSS le fait remonter
+  }
+  el.sheetGrip.addEventListener('pointerup', endPull);
+  el.sheetGrip.addEventListener('pointercancel', endPull);
+  el.sheetGrip.addEventListener('click', (e) => { if (e.detail === 0) closeSheet(0); }); // clavier
 
   // Bouton « Ajouter » : visible dès qu'il y a du texte. Le toucher ne retire pas le
   // focus du champ (le clavier du téléphone reste ouvert pour enchaîner les ajouts).
