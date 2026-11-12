@@ -13,7 +13,12 @@
     add: $('add'), newItem: $('new-item'), addBtn: $('add-btn'), items: $('items'), checkedTools: $('checked-tools'), uncheck: $('uncheck-all'), clear: $('clear-checked'),
     ownerTools: $('owner-tools'), del: $('delete'), confirm: $('confirm-delete'),
     confirmText: $('confirm-text'), delYes: $('delete-yes'), delNo: $('delete-no'), empty: $('empty'),
+    listHead: $('list-head'), switcher: $('switcher'), switcherName: $('switcher-name'), pager: $('pager'),
+    sheet: $('sheet'), sheetLists: $('sheet-lists'), sheetNew: $('sheet-new'), sheetRename: $('sheet-rename'),
+    sheetUp: $('sheet-up'), sheetDown: $('sheet-down'),
   };
+  // Téléphone : sélecteur en panneau et balayage à la place des onglets (même seuil que le CSS).
+  const mobile = matchMedia('(max-width: 699px)');
   const DEFAULT_LIST_NAME = document.body.dataset.defaultListName;
   const COLORS = [...document.querySelectorAll('input[name="color"]')].map((i) => i.value);
 
@@ -58,6 +63,8 @@
   const byId = (id) => lists.find((l) => l.id === id);
   const currentList = () => byId(current);
   const isMine = (l) => l.owner_id === ME;
+  // Ordre des onglets, du panneau et du balayage : les miennes, puis celles partagées avec moi.
+  const sortedLists = () => [...lists].sort((a, b) => (isMine(b) - isMine(a)) || (a.position - b.position));
 
   let toastTimer;
   function toast(msg) {
@@ -298,12 +305,16 @@
   function render() {
     scheduleSave();
     renderTabs();
+    if (el.sheet.open) renderSheet();
     const l = currentList();
     el.list.hidden = !l;
     el.empty.hidden = !!l || !loaded;
     if (!l) return;
     el.list.className = 'list c-' + l.color;
     if (document.activeElement !== el.title) el.title.value = l.name;
+    el.switcherName.textContent = l.name;
+    el.switcher.setAttribute('aria-label', l.name + ' : changer de liste');
+    renderPager();
     const mine = isMine(l);
     el.share.checked = l.shared;
     el.share.disabled = !mine;
@@ -315,8 +326,7 @@
   }
 
   function renderTabs() {
-    const sorted = [...lists].sort((a, b) => (isMine(b) - isMine(a)) || (a.position - b.position));
-    el.tabs.replaceChildren(...sorted.map((l) => {
+    el.tabs.replaceChildren(...sortedLists().map((l) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tab';
@@ -358,6 +368,104 @@
     t.classList.toggle('more-right', right);
     el.tabsPrev.hidden = !left;
     el.tabsNext.hidden = !right;
+  }
+
+  // Points sous le titre : où se trouve la liste affichée parmi celles qu'on fait défiler.
+  function renderPager() {
+    const sorted = sortedLists();
+    el.pager.hidden = sorted.length < 2 || sorted.length > 12;
+    el.pager.replaceChildren(...sorted.map((l) => {
+      const pip = document.createElement('span');
+      pip.className = 'pip' + (l.id === current ? ' on' : '');
+      return pip;
+    }));
+  }
+
+  // Panneau des listes : toutes d'un coup d'œil, avec le nombre d'éléments à faire.
+  function renderSheet() {
+    const rows = [];
+    let shared = false;
+    sortedLists().forEach((l) => {
+      if (!isMine(l) && !shared) {
+        shared = true;
+        const h = document.createElement('p');
+        h.className = 'sheet-group';
+        h.textContent = 'Partagées avec moi';
+        rows.push(h);
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sheet-item';
+      b.dataset.id = l.id;
+      b.setAttribute('aria-current', String(l.id === current));
+      const dot = document.createElement('span');
+      dot.className = 'dot c-' + l.color;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = l.name;
+      b.append(dot, name);
+      if (!isMine(l)) {
+        const from = document.createElement('span');
+        from.className = 'from';
+        from.textContent = 'de ' + l.owner_name;
+        b.append(from);
+      }
+      if (l.shared) {
+        const mark = document.createElement('span');
+        mark.className = 'mark';
+        mark.textContent = '⇄';
+        mark.setAttribute('aria-label', 'partagée');
+        b.append(mark);
+      }
+      const n = l.items.filter((it) => !it.category && !it.checked).length;
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = n || '';
+      if (n) count.setAttribute('aria-label', n + ' à faire');
+      b.append(count);
+      rows.push(b);
+    });
+    el.sheetLists.replaceChildren(...rows);
+    updateSheetEdges();
+  }
+
+  function openSheet() {
+    renderSheet();
+    el.sheet.showModal();
+    const cur = el.sheetLists.querySelector('[aria-current="true"]');
+    if (cur) cur.focus();
+    updateSheetEdges();
+  }
+
+  // Listes cachées au-dessus ou en dessous : fondu sur ce bord, et une pastille qui dit
+  // combien il en reste (la barre de défilement d'un téléphone n'apparaît qu'au geste).
+  function updateSheetEdges() {
+    const s = el.sheetLists;
+    const box = s.getBoundingClientRect();
+    let above = 0;
+    let below = 0;
+    s.querySelectorAll('.sheet-item').forEach((b) => {
+      const r = b.getBoundingClientRect();
+      if (r.top < box.top - r.height / 2) above++;
+      else if (r.bottom > box.bottom + r.height / 2) below++;
+    });
+    s.classList.toggle('more-top', s.scrollTop > 2);
+    s.classList.toggle('more-bottom', s.scrollTop + s.clientHeight < s.scrollHeight - 2);
+    const label = (n) => n + (n > 1 ? ' autres' : ' autre');
+    el.sheetUp.hidden = !above;
+    el.sheetUp.textContent = label(above);
+    el.sheetUp.setAttribute('aria-label', 'Voir ' + label(above) + ' au-dessus');
+    el.sheetDown.hidden = !below;
+    el.sheetDown.textContent = label(below);
+    el.sheetDown.setAttribute('aria-label', 'Voir ' + label(below) + ' en dessous');
+  }
+  const pageSheet = (dir) => el.sheetLists.scrollBy({ top: dir * el.sheetLists.clientHeight * 0.7, behavior: reduceMotion ? 'auto' : 'smooth' });
+
+  // Le nom s'édite à la place du sélecteur, le temps de la saisie.
+  function editTitle() {
+    el.listHead.classList.add('renaming');
+    el.title.focus();
+    el.title.select();
   }
 
   // Cochés en bas, en gris. Les lignes existantes sont réutilisées pour ne pas
@@ -747,8 +855,7 @@
       color, shared: false, position, items: [] });
     send('POST', '/api/lists', { nonce, name: DEFAULT_LIST_NAME, color }, [id]);
     open(id);
-    el.title.focus();
-    el.title.select();
+    editTitle();
   }
 
   function patchList(patch) {
@@ -784,6 +891,84 @@
   el.tabsPrev.addEventListener('click', () => page(-1));
   el.tabsNext.addEventListener('click', () => page(1));
   window.addEventListener('resize', () => { updateTabEdges(); fitAll(); });
+
+  // Téléphone : le titre ouvre le panneau des listes ; toucher hors du panneau le ferme.
+  el.switcher.addEventListener('click', openSheet);
+  el.sheet.addEventListener('click', (e) => { if (e.target === el.sheet) el.sheet.close(); });
+  el.sheetLists.addEventListener('scroll', updateSheetEdges, { passive: true });
+  el.sheetUp.addEventListener('click', () => pageSheet(-1));
+  el.sheetDown.addEventListener('click', () => pageSheet(1));
+  el.sheetLists.addEventListener('click', (e) => {
+    const b = e.target.closest('.sheet-item');
+    if (!b) return;
+    el.sheet.close();
+    if (b.dataset.id !== current) { open(b.dataset.id); window.scrollTo(0, 0); }
+  });
+  el.sheetNew.addEventListener('click', () => { el.sheet.close(); newList(); });
+  el.sheetRename.addEventListener('click', () => { el.sheet.close(); editTitle(); });
+  mobile.addEventListener('change', () => { if (!mobile.matches && el.sheet.open) el.sheet.close(); });
+
+  // Téléphone : glisser la liste vers la gauche ou la droite ouvre la voisine, dans
+  // l'ordre du panneau. La liste suit le doigt ; sans voisine de ce côté, elle résiste.
+  // Rien ne part des bords de l'écran (geste « retour » du système), d'une poignée,
+  // d'un champ en cours d'édition ni d'un geste d'abord vertical (défilement).
+  let swipe = null;
+  const neighbour = (dir) => {
+    const sorted = sortedLists();
+    return sorted[sorted.findIndex((l) => l.id === current) + dir] || null;
+  };
+  el.list.addEventListener('pointerdown', (e) => {
+    if (!mobile.matches || e.pointerType !== 'touch' || drag || swipe) return;
+    if (e.clientX < 24 || e.clientX > innerWidth - 24) return;
+    if (e.target.closest('.handle') || e.target === document.activeElement) return;
+    swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp, on: false, shown: 0 };
+  });
+  el.list.addEventListener('pointermove', (e) => {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    if (!swipe.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      swipe.on = true;
+      el.list.setPointerCapture(e.pointerId);
+    }
+    swipe.shown = neighbour(dx < 0 ? 1 : -1) ? dx : dx / 4;
+    el.list.style.transform = 'translateX(' + swipe.shown + 'px)';
+  });
+  function endSwipe(e) {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    const { on, shown, x, t } = swipe;
+    swipe = null;
+    if (!on) return;
+    const dx = e.clientX - x;
+    const dir = dx < 0 ? 1 : -1;
+    const next = neighbour(dir);
+    const far = Math.abs(dx) > innerWidth * 0.3 || (Math.abs(dx) > 40 && e.timeStamp - t < 250);
+    if (next && far && e.type === 'pointerup') return slideTo(next.id, dir, shown);
+    el.list.style.transform = '';
+    if (!reduceMotion) el.list.animate([{ transform: 'translateX(' + shown + 'px)' }, { transform: 'none' }], { duration: 200, easing: EASE });
+  }
+  el.list.addEventListener('pointerup', endSwipe);
+  el.list.addEventListener('pointercancel', endSwipe);
+
+  // La liste quittée sort du côté du geste, la nouvelle entre par l'autre.
+  function slideTo(id, dir, from) {
+    const show = () => {
+      el.list.style.transform = '';
+      open(id);
+      window.scrollTo(0, 0);
+    };
+    if (reduceMotion) return show();
+    const out = el.list.animate([{ transform: 'translateX(' + from + 'px)' }, { transform: 'translateX(' + -dir * innerWidth + 'px)' }],
+      { duration: 160, easing: 'ease-in', fill: 'forwards' });
+    out.finished.then(() => {
+      show();
+      out.cancel();
+      el.list.animate([{ transform: 'translateX(' + dir * innerWidth * 0.4 + 'px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+        { duration: 220, easing: EASE });
+    });
+  }
 
   // Bouton « Ajouter » : visible dès qu'il y a du texte. Le toucher ne retire pas le
   // focus du champ (le clavier du téléphone reste ouvert pour enchaîner les ajouts).
@@ -889,6 +1074,7 @@
     if (e.key === 'Escape') { el.title.value = (currentList() || {}).name || ''; el.title.blur(); }
   });
   el.title.addEventListener('blur', () => {
+    el.listHead.classList.remove('renaming');
     const l = currentList();
     if (!l) return;
     const name = el.title.value.trim();
