@@ -115,6 +115,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/lists/{id}", a.authedAPI(a.apiDeleteList))
 	mux.HandleFunc("POST /api/lists/{id}/items", a.authedAPI(a.apiCreateItem))
 	mux.HandleFunc("POST /api/lists/{id}/clear-checked", a.authedAPI(a.apiClearChecked))
+	mux.HandleFunc("POST /api/lists/{id}/restore", a.authedAPI(a.apiRestoreItems))
 	mux.HandleFunc("PATCH /api/items/{id}", a.authedAPI(a.apiUpdateItem))
 	mux.HandleFunc("DELETE /api/items/{id}", a.authedAPI(a.apiDeleteItem))
 	mux.HandleFunc("POST /api/items/{id}/move", a.authedAPI(a.apiMoveItem))
