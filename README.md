@@ -3,7 +3,7 @@
 Des listes à cocher, partagées en temps réel, à auto-héberger. Courses, choses à faire aujourd'hui,
 projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujours modifiable.
 
-![Une liste de courses : éléments à cocher, cochés en bas, onglets des autres listes en haut](docs/screenshots/courses.png)
+![Une liste de courses rangée par catégories (fruits et légumes, frais, épicerie) : éléments à cocher, cochés en bas de leur catégorie, onglets des autres listes en haut](docs/screenshots/courses.png)
 
 - Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
   rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
@@ -19,13 +19,15 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
 - Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
   sans réseau sont renvoyées au retour de la connexion.
+- Sur téléphone, le titre de la liste ouvre un panneau, en bas de l'écran, avec toutes les listes
+  et le nombre d'éléments à faire de chacune ; on le replie en tirant sa poignée vers le bas.
 - Appli web installable sur l'écran d'accueil (iOS, Android), interface en français.
 - Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo.
 
-![Une liste partagée par un autre compte : même liste, modifiable par les deux](docs/screenshots/liste-partagee.png)
+![Une liste partagée par un autre compte, en catégories : même liste, modifiable par les deux ; une catégorie dont tous les éléments sont cochés est rayée](docs/screenshots/liste-partagee.png)
 
 <p align="center">
-  <img src="docs/screenshots/telephone.png" width="620" alt="Sur téléphone : la liste de courses et la liste du jour, onglets en haut, cases à cocher à portée de pouce">
+  <img src="docs/screenshots/telephone.png" width="620" alt="Sur téléphone : la liste de courses en catégories, puis le panneau des listes ouvert en bas de l'écran, avec le nombre d'éléments à faire de chacune">
 </p>
 
 Captures faites sur des données inventées.
