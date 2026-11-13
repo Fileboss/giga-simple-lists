@@ -24,6 +24,33 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Appli web installable sur l'écran d'accueil (iOS, Android), interface en français.
 - Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo.
 
+Qui voit quoi : chaque compte a ses listes privées, que lui seul voit. Une liste partagée apparaît
+chez tous les comptes de l'instance, qui peuvent la renommer et en modifier les éléments ; sa
+couleur, son partage et sa suppression restent à son propriétaire.
+
+```mermaid
+flowchart TB
+  subgraph partagees["⇄ Partagées"]
+    C["Courses<br/><i>de Camille</i>"]
+    W["Week-end à Annecy<br/><i>de Sam</i>"]
+  end
+
+  Camille(["👤 Camille"])
+  Sam(["👤 Sam"])
+  Alex(["👤 Alex"])
+
+  subgraph privees["🔒 Privées"]
+    A["Aujourd'hui<br/><i>de Camille</i>"]
+    P["Projets 2027<br/><i>de Sam</i>"]
+  end
+
+  partagees <==> Camille
+  partagees <==> Sam
+  partagees <==> Alex
+  Camille <--> A
+  Sam <--> P
+```
+
 ![Une liste partagée par un autre compte, en catégories : même liste, modifiable par les deux ; une catégorie dont tous les éléments sont cochés est rayée](docs/screenshots/liste-partagee.png)
 
 <p align="center">
