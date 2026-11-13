@@ -40,9 +40,11 @@ func (a *App) apiState(w http.ResponseWriter, r *http.Request, s *session) {
 
 func (a *App) apiCreateList(w http.ResponseWriter, r *http.Request, s *session) {
 	var in struct {
-		Nonce string `json:"nonce"`
-		Name  string `json:"name"`
-		Color string `json:"color"`
+		Nonce    string `json:"nonce"`
+		Name     string `json:"name"`
+		Color    string `json:"color"`
+		Shared   bool   `json:"shared"`
+		Position int64  `json:"position"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		writeErr(w, err)
@@ -52,7 +54,7 @@ func (a *App) apiCreateList(w http.ResponseWriter, r *http.Request, s *session) 
 	err := a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
 		var created bool
 		var err error
-		l, created, err = createList(tx, s.UserID, in.Nonce, in.Name, in.Color)
+		l, created, err = createList(tx, s.UserID, in.Nonce, in.Name, in.Color, in.Shared, in.Position)
 		if err != nil || !created {
 			return nil, err
 		}
@@ -283,6 +285,46 @@ func (a *App) apiClearChecked(w http.ResponseWriter, r *http.Request, s *session
 	writeJSON(w, http.StatusOK, struct {
 		IDs []string `json:"ids"`
 	}{ids})
+}
+
+// apiRestoreItems : {"items": [{nonce, text, checked, category, position}]} recrée des
+// éléments supprimés (annulation d'une suppression).
+func (a *App) apiRestoreItems(w http.ResponseWriter, r *http.Request, s *session) {
+	id, err := pathID(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var in struct {
+		Items []restoredItem `json:"items"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var restored []Item
+	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
+		l, items, moved, err := restoreItems(tx, s.UserID, id, in.Items)
+		if err != nil {
+			return nil, err
+		}
+		restored = items
+		var evs []event
+		if len(moved) > 0 {
+			evs = append(evs, newEvent(evItemsMoved, itemsMoved{l.ID, moved}, toViewersOf(l)))
+		}
+		for i := range items {
+			evs = append(evs, newEvent(evItem, &items[i], toViewersOf(l)))
+		}
+		return evs, nil
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Items []Item `json:"items"`
+	}{restored})
 }
 
 // apiEvents : flux SSE de l'utilisateur. Ne reçoit que les événements dont le

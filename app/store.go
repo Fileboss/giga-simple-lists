@@ -1,11 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -21,6 +23,7 @@ const (
 	maxBodyBytes     = 16 << 10
 	maxUserNameRunes = 32
 	maxClearIDs      = 200 // par requête « supprimer les cochés » (tient dans maxBodyBytes)
+	maxRestoreItems  = 200 // par requête de restauration (le client découpe selon maxBodyBytes)
 )
 
 var (
@@ -243,7 +246,8 @@ func cleanText(s string, max int) (string, error) {
 	return s, nil
 }
 
-func createList(tx querier, userID, nonce, name, color string) (l *List, created bool, err error) {
+// createList : shared et position (0 : en dernier) servent à restaurer une liste supprimée.
+func createList(tx querier, userID, nonce, name, color string, shared bool, position int64) (l *List, created bool, err error) {
 	id, err := creationID(userID, nonce)
 	if err != nil {
 		return nil, false, err
@@ -275,9 +279,12 @@ func createList(tx querier, userID, nonce, name, color string) (l *List, created
 	if n >= maxListsPerUser {
 		return nil, false, errLimit
 	}
+	if position <= 0 {
+		position = pos + 1
+	}
 	t := nowMs()
 	_, err = tx.Exec(`INSERT INTO lists (id, owner_id, name, color, shared, position, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 0, ?, ?, ?)`, id, userID, name, color, pos+1, t, t)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, userID, name, color, shared, position, t, t)
 	if isConstraint(err) {
 		return nil, false, errNotFound // identifiant déjà pris par une liste invisible
 	}
@@ -488,6 +495,99 @@ func splitBlock(items []Item, id string) (block, rest []Item) {
 	block = append([]Item{}, items[start:end]...)
 	rest = append(append([]Item{}, items[:start]...), items[end:]...)
 	return block, rest
+}
+
+type restoredItem struct {
+	Nonce    string `json:"nonce"`
+	Text     string `json:"text"`
+	Checked  bool   `json:"checked"`
+	Category bool   `json:"category"`
+	Position int64  `json:"position"`
+}
+
+// restoreItems recrée des éléments supprimés (annulation) à leur ancienne position :
+// chacun y est inséré en décalant d'un cran ceux qui sont à cette position ou après.
+// Insérés du plus bas au plus haut, ils reprennent tous leur place, même envoyés en
+// plusieurs requêtes (les autres positions ne bougent qu'en bloc). Les identifiants
+// viennent de nonces, comme une création : un renvoi (file hors ligne) ne recrée rien.
+// Renvoie les éléments recréés et les positions des autres qui ont changé.
+func restoreItems(tx querier, userID, listID string, in []restoredItem) (*List, []Item, []itemPosition, error) {
+	if len(in) > maxRestoreItems {
+		return nil, nil, nil, invalidError("trop d'éléments")
+	}
+	l, err := accessList(tx, userID, listID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var add []Item
+	seen := map[string]bool{}
+	for _, r := range in {
+		if r.Nonce == "" {
+			return nil, nil, nil, invalidError("nonce manquant")
+		}
+		id, err := creationID(userID, r.Nonce)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		text, err := cleanText(r.Text, maxItemText)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if text == "" {
+			return nil, nil, nil, invalidError("texte vide")
+		}
+		if r.Category && r.Checked {
+			return nil, nil, nil, invalidError("une catégorie ne se coche pas")
+		}
+		if existing, err := loadItem(tx, id); err == nil {
+			if existing.ListID != l.ID {
+				return nil, nil, nil, errNotFound
+			}
+			continue // déjà restauré
+		} else if !errors.Is(err, errNotFound) {
+			return nil, nil, nil, err
+		}
+		if !seen[id] {
+			seen[id] = true
+			add = append(add, Item{ID: id, Text: text, Checked: r.Checked, Category: r.Category, Position: max(r.Position, 1)})
+		}
+	}
+	before, err := loadItems(tx, l.ID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(before)+len(add) > maxItemsPerList {
+		return nil, nil, nil, errLimit
+	}
+	slices.SortStableFunc(add, func(a, b Item) int { return cmp.Compare(b.Position, a.Position) })
+	t := nowMs()
+	for _, x := range add {
+		if _, err := tx.Exec(`UPDATE items SET position = position + 1 WHERE list_id = ? AND position >= ?`, l.ID, x.Position); err != nil {
+			return nil, nil, nil, err
+		}
+		if _, err := tx.Exec(`INSERT INTO items (id, list_id, text, checked, category, position, updated_at, updated_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, x.ID, l.ID, x.Text, x.Checked, x.Category, x.Position, t, userID); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	after, err := loadItems(tx, l.ID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	old := map[string]int64{}
+	for _, x := range before {
+		old[x.ID] = x.Position
+	}
+	restored := []Item{}
+	var moved []itemPosition
+	for _, x := range after {
+		if seen[x.ID] {
+			restored = append(restored, x)
+		} else if p, ok := old[x.ID]; ok && p != x.Position {
+			moved = append(moved, itemPosition{x.ID, x.Position})
+		}
+	}
+	return l, restored, moved, nil
 }
 
 func deleteItem(tx querier, userID, itemID string) (*Item, *List, error) {

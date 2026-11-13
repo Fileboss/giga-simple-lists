@@ -28,6 +28,7 @@ func TestPrivateListsInvisibleToOthers(t *testing.T) {
 		{"DELETE", "/api/lists/" + l.ID, nil},
 		{"POST", "/api/lists/" + l.ID + "/items", map[string]any{"text": "intrus"}},
 		{"POST", "/api/lists/" + l.ID + "/clear-checked", map[string]any{}},
+		{"POST", "/api/lists/" + l.ID + "/restore", map[string]any{"items": []map[string]any{{"nonce": newID(), "text": "intrus"}}}},
 		{"PATCH", "/api/items/" + it.ID, map[string]any{"checked": true}},
 		{"PATCH", "/api/items/" + it.ID, map[string]any{"text": ""}},
 		{"DELETE", "/api/items/" + it.ID, nil},
@@ -321,4 +322,58 @@ func TestClearCheckedOnlySentIDs(t *testing.T) {
 		ids[i] = newID()
 	}
 	h.expect(http.StatusBadRequest, sa, "POST", "/api/lists/"+l.ID+"/clear-checked", map[string]any{"ids": ids})
+}
+
+// Annulation d'une suppression : l'élément revient à sa place, coché ou non, et un
+// renvoi (file hors ligne) ne le recrée pas une seconde fois.
+func TestRestoreItems(t *testing.T) {
+	h := newHarness(t)
+	sa := h.session(h.addUser("alice"))
+	l := h.createList(sa, "Courses")
+	h.createItem(sa, l.ID, "a")
+	b := h.createItem(sa, l.ID, "b")
+	h.createItem(sa, l.ID, "c")
+	h.mustDo(sa, "PATCH", "/api/items/"+b.ID, map[string]any{"checked": true}, nil)
+	h.expect(http.StatusNoContent, sa, "DELETE", "/api/items/"+b.ID, nil)
+	order := func() (s string) {
+		for _, it := range h.state(sa).Lists[0].Items {
+			s += it.Text
+			if it.Checked {
+				s += "✓"
+			}
+		}
+		return s
+	}
+	body := map[string]any{"items": []map[string]any{{"nonce": newID(), "text": "b", "checked": true, "position": b.Position}}}
+	var out struct{ Items []Item }
+	h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/restore", body, &out)
+	if len(out.Items) != 1 || out.Items[0].Position != b.Position {
+		t.Fatalf("restaurés : %+v", out.Items)
+	}
+	h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/restore", body, &out)
+	if len(out.Items) != 0 {
+		t.Fatalf("renvoi : %+v", out.Items)
+	}
+	if o := order(); o != "ab✓c" {
+		t.Fatalf("ordre : %s", o)
+	}
+	// Plusieurs suppressions restaurées en deux requêtes (du plus bas au plus haut) :
+	// chacun reprend sa place.
+	all := h.state(sa).Lists[0].Items // a b c
+	h.expect(http.StatusNoContent, sa, "DELETE", "/api/items/"+all[0].ID, nil)
+	h.expect(http.StatusNoContent, sa, "DELETE", "/api/items/"+all[2].ID, nil)
+	h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/restore", map[string]any{"items": []map[string]any{{"nonce": newID(), "text": "c", "position": all[2].Position}}}, nil)
+	h.mustDo(sa, "POST", "/api/lists/"+l.ID+"/restore", map[string]any{"items": []map[string]any{{"nonce": newID(), "text": "a", "position": all[0].Position}}}, nil)
+	if o := order(); o != "ab✓c" {
+		t.Fatalf("ordre : %s", o)
+	}
+	h.expect(http.StatusBadRequest, sa, "POST", "/api/lists/"+l.ID+"/restore", map[string]any{"items": []map[string]any{{"nonce": newID(), "text": "F", "category": true, "checked": true}}})
+	h.expect(http.StatusBadRequest, sa, "POST", "/api/lists/"+l.ID+"/restore", map[string]any{"items": []map[string]any{{"text": "sans nonce"}}})
+
+	// Une liste supprimée revient partagée, à sa place.
+	var back List
+	h.mustDo(sa, "POST", "/api/lists", map[string]any{"nonce": newID(), "name": "Retour", "color": "rose", "shared": true, "position": 1}, &back)
+	if !back.Shared || back.Position != 1 || back.Color != "rose" {
+		t.Fatalf("liste restaurée : %+v", back)
+	}
 }

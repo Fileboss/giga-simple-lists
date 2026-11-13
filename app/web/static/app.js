@@ -16,6 +16,7 @@
     listHead: $('list-head'), switcher: $('switcher'), switcherName: $('switcher-name'),
     sheet: $('sheet'), sheetLists: $('sheet-lists'), sheetNew: $('sheet-new'), sheetRename: $('sheet-rename'),
     sheetUp: $('sheet-up'), sheetDown: $('sheet-down'), sheetGrip: $('sheet-grip'),
+    undo: $('undo'), undoText: $('undo-text'), undoBtn: $('undo-btn'),
   };
   // Téléphone : sélecteur en panneau à la place des onglets (même seuil que le CSS).
   const mobile = matchMedia('(max-width: 699px)');
@@ -72,6 +73,92 @@
     el.toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.toast.hidden = true; }, 4000);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Annuler une suppression : les 5 dernières, une à une, par le bouton du bandeau
+  // (qui montre alors la précédente) ou Ctrl+Z / ⌘Z hors d'un champ de saisie. Les
+  // éléments sont recréés à leur place, sous de nouveaux identifiants ; une liste
+  // supprimée revient avec ses éléments.
+
+  const UNDO_MAX = 5;
+  const undos = []; // {label, listId, items} ou {label, list}
+  let undoTimer;
+  let undoing = Promise.resolve(); // une annulation à la fois : la suivante voit les identifiants recréés
+
+  function remember(entry) {
+    undos.push(entry);
+    if (undos.length > UNDO_MAX) undos.shift();
+    showUndo();
+  }
+
+  const quote = (s) => '« ' + s + ' »';
+  const itemsLabel = (items) => (items.length > 1 ? items.length + ' éléments supprimés'
+    : quote(items[0].text) + (items[0].category ? ' supprimée' : ' supprimé'));
+
+  function showUndo() {
+    clearTimeout(undoTimer);
+    const e = undos.at(-1);
+    el.undo.hidden = !e;
+    if (!e) return;
+    el.undoText.textContent = e.label;
+    undoTimer = setTimeout(() => { el.undo.hidden = true; }, 8000);
+  }
+
+  function undoLast() {
+    undoing = undoing.then(async () => {
+      const e = undos.pop();
+      if (e) await (e.list ? restoreList(e.list) : restoreItems(e.listId, e.items));
+      showUndo();
+    });
+  }
+
+  // Même calcul que restoreItems côté serveur : du plus bas au plus haut, chaque élément
+  // reprend sa position en décalant ceux qui y sont ou après. Envoi par paquets sous la
+  // taille maximale d'une requête, dans le même ordre.
+  async function restoreItems(listId, snaps) {
+    const l = byId(listId);
+    if (!l) { toast('Cette liste n’est plus là.'); return; }
+    const made = [];
+    for (const s of snaps) {
+      if (l.items.some((x) => x.id === s.id)) continue; // encore là (décoché par un autre entre-temps)
+      const nonce = randomHex();
+      const body = { nonce, text: s.text, checked: s.checked, category: !!s.category, position: s.position };
+      made.push({ body, it: { ...s, id: await creationID(nonce), list_id: l.id, updated_at: Date.now() } });
+    }
+    if (!made.length) return;
+    made.sort((a, b) => b.body.position - a.body.position);
+    made.forEach(({ it }) => {
+      l.items.forEach((x) => { if (x.position >= it.position) x.position++; });
+      l.items.push(it);
+    });
+    if (l.id !== current) open(l.id); else renderItems(l);
+    const bytes = (x) => new TextEncoder().encode(JSON.stringify(x)).length;
+    let chunk = [];
+    let size = 0;
+    const post = () => {
+      if (chunk.length) send('POST', '/api/lists/' + l.id + '/restore', { items: chunk.map((m) => m.body) }, chunk.map((m) => m.it.id));
+      chunk = [];
+      size = 0;
+    };
+    made.forEach((m) => {
+      const n = bytes(m.body) + 1;
+      if (chunk.length === 200 || size + n > 12000) post();
+      chunk.push(m);
+      size += n;
+    });
+    post();
+  }
+
+  async function restoreList(snap) {
+    const nonce = randomHex();
+    const id = await creationID(nonce);
+    const { items, ...meta } = snap;
+    lists.push({ ...meta, id, items: [] });
+    undos.forEach((e) => { if (e.listId === snap.id) e.listId = id; });
+    send('POST', '/api/lists', { nonce, name: snap.name, color: snap.color, shared: snap.shared, position: snap.position }, [id]);
+    open(id);
+    await restoreItems(id, items);
   }
 
   // ---------------------------------------------------------------------------
@@ -594,6 +681,7 @@
     if (text === it.text) return;
     const l = currentList();
     if (text === '') {
+      remember({ label: itemsLabel([it]), listId: l.id, items: [{ ...it }] });
       l.items = l.items.filter((x) => x.id !== id);
       send('DELETE', '/api/items/' + id, undefined, [id]);
     } else {
@@ -827,7 +915,9 @@
 
   function removeItem(id) {
     const l = currentList();
-    if (!l || !l.items.some((x) => x.id === id)) return;
+    const it = l && l.items.find((x) => x.id === id);
+    if (!it) return;
+    remember({ label: itemsLabel([it]), listId: l.id, items: [{ ...it }] });
     l.items = l.items.filter((x) => x.id !== id);
     send('DELETE', '/api/items/' + id, undefined, [id]);
     renderItems(l);
@@ -1079,8 +1169,10 @@
   el.clear.addEventListener('click', () => {
     const l = currentList();
     if (!l) return;
-    const ids = l.items.filter((it) => it.checked).map((it) => it.id);
+    const gone = l.items.filter((it) => it.checked);
+    const ids = gone.map((it) => it.id);
     if (!ids.length) return;
+    remember({ label: itemsLabel(gone), listId: l.id, items: gone.map((it) => ({ ...it })) });
     l.items = l.items.filter((it) => !it.checked);
     renderItems(l);
     // Le serveur ne supprime que ces éléments (s'ils sont encore cochés), par paquets de 200.
@@ -1103,9 +1195,20 @@
   el.delYes.addEventListener('click', () => {
     const l = currentList();
     if (!l) return;
+    remember({ label: 'Liste ' + quote(l.name) + ' supprimée', list: { ...l, items: l.items.map((it) => ({ ...it })) } });
     lists = lists.filter((x) => x.id !== l.id);
     send('DELETE', '/api/lists/' + l.id, undefined, [l.id]);
     open(lists.length ? lists[0].id : null);
+  });
+
+  el.undoBtn.addEventListener('click', undoLast);
+  // Ctrl+Z / ⌘Z : dans un champ de saisie, il annule la frappe, sauf dans « Ajouter… » vide.
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z' || !undos.length) return;
+    const t = e.target;
+    if (t.matches('textarea, input:not([type=checkbox]):not([type=radio])') && !(t === el.newItem && t.value === '')) return;
+    e.preventDefault();
+    undoLast();
   });
 
   setInterval(() => {

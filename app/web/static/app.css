@@ -145,6 +145,23 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   background: rgba(46, 46, 44, .88);
 }
 
+/* Bandeau d'annulation : seul de la pile à recevoir le toucher. */
+.undo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 2px 2px 16px;
+  border-radius: 24px;
+  font-size: 14px;
+  color: var(--paper);
+  background: rgba(46, 46, 44, .92);
+  pointer-events: auto;
+}
+.undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undo button { flex: none; border: 0; font-weight: 600; color: #e9dcb0; }
+.undo button:hover { background-color: rgba(251, 250, 247, .1); }
+
 /* Liste */
 .list { position: relative; flex: 1; padding: 20px 20px 32px; transition: background-color .3s; }
 .list-head { display: flex; gap: 8px; align-items: center; }
