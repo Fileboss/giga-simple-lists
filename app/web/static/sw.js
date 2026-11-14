@@ -3,7 +3,7 @@
 // L'API et le flux SSE ne passent pas par ici : app.js garde sa propre copie des listes.
 'use strict';
 
-const CACHE = 'listes-v3';
+const CACHE = 'listes-v4';
 const PAGE = '/'; // la page de l'appli : propre à la session, effacée à la déconnexion
 const ASSETS = ['/static/app.js', '/static/public.js', '/static/app.css', '/static/check.svg', '/static/icon.svg',
   '/static/icon-192.png', '/manifest.webmanifest'];
@@ -55,10 +55,17 @@ async function page(e) {
 }
 
 // Page d'un lien public : comme la page de l'appli, ouvrable sans réseau. Un lien
-// révoqué (404) est oublié.
+// révoqué (404) est oublié, même quand la réponse arrive après la copie en cache ; seuls
+// les MAX_PUBLIC derniers liens ouverts sont gardés.
+const MAX_PUBLIC = 20;
 async function publicPage(e, key) {
-  const { response, fromCache } = await networkFirst(e, e.request, key);
-  if (response.status === 404) e.waitUntil(caches.open(CACHE).then((c) => c.delete(key)));
+  const { response, fromCache, net } = await networkFirst(e, e.request, key);
+  e.waitUntil(net.then(async (res) => {
+    const c = await caches.open(CACHE);
+    if (res.status === 404) return c.delete(key);
+    const old = (await c.keys()).filter((r) => new URL(r.url).pathname.startsWith('/s/'));
+    for (const r of old.slice(0, Math.max(0, old.length - MAX_PUBLIC))) await c.delete(r);
+  }, () => {}));
   if (fromCache) offlineClients.add(e.resultingClientId);
   return response;
 }
@@ -69,7 +76,8 @@ async function fromCache(req) {
 
 // Le réseau, mis en cache s'il répond ; sinon (erreur, pas de réponse sous TIMEOUT, serveur
 // injoignable derrière le reverse proxy) la copie en cache s'il y en a une, et à défaut
-// la réponse du réseau quand elle arrive. Renvoie { response, fromCache }.
+// la réponse du réseau quand elle arrive. Renvoie { response, fromCache, net } (net : la
+// réponse du réseau, même si elle arrive après la copie).
 function networkFirst(e, req, key = req) {
   const net = fetch(req).then((res) => {
     if (res.ok && res.type === 'basic') {
@@ -81,7 +89,7 @@ function networkFirst(e, req, key = req) {
   e.waitUntil(net.catch(() => {}));
   return new Promise((resolve) => {
     let done = false;
-    const answer = (response, fromCache) => { if (!done) { done = true; resolve({ response, fromCache }); } };
+    const answer = (response, fromCache) => { if (!done) { done = true; resolve({ response, fromCache, net }); } };
     // res : la réponse du réseau à rendre faute de copie (null : on l'attend encore).
     const fallback = async (res) => {
       const hit = await caches.match(key);

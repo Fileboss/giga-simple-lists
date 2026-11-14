@@ -1233,20 +1233,26 @@
     const known = new Map((accounts || []).map((a) => [a.id, a.name]));
     members.forEach((m) => { if (!known.has(m.id)) known.set(m.id, m.name); });
     const chosen = new Set(members.map((m) => m.id));
-    el.sharePeople.replaceChildren(...[...known].map(([id, name]) => {
-      const label = document.createElement('label');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.value = id;
-      box.checked = chosen.has(id);
-      label.append(box, ' ' + name);
-      return label;
-    }));
-    if (!known.size) {
-      const p = document.createElement('p');
-      p.className = 'muted';
-      p.textContent = t(accounts ? 'noAccounts' : 'accountsOffline');
-      el.sharePeople.append(p);
+    // Reconstruit seulement si quelque chose a changé : un événement temps réel ne doit pas
+    // faire perdre le focus clavier dans la fenêtre ouverte.
+    const sig = JSON.stringify([[...known], [...chosen], !!accounts]);
+    if (el.sharePeople.dataset.sig !== sig) {
+      el.sharePeople.dataset.sig = sig;
+      el.sharePeople.replaceChildren(...[...known].map(([id, name]) => {
+        const label = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = id;
+        box.checked = chosen.has(id);
+        label.append(box, ' ' + name);
+        return label;
+      }));
+      if (!known.size) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = t(accounts ? 'noAccounts' : 'accountsOffline');
+        el.sharePeople.append(p);
+      }
     }
     el.publicOn.checked = !!l.public;
     el.publicBox.hidden = !l.public || !publicUrl;
@@ -1301,7 +1307,8 @@
       res = null;
     }
     if (!res || !res.ok) {
-      toast(t('needsNetwork'));
+      const err = res ? await res.json().catch(() => ({})) : {};
+      toast(err.error || t('needsNetwork'));
       renderShare(l);
       return;
     }

@@ -42,6 +42,8 @@ type App struct {
 	heartbeat time.Duration
 	// Sérialise écritures et publications SSE (voir commitAndPublish).
 	writeMu sync.Mutex
+	// Écritures anonymes par IP (liens publics).
+	publicWrites rateLimiter
 }
 
 type staticFile struct {
@@ -52,13 +54,14 @@ type staticFile struct {
 
 func newApp(cfg config, db *sql.DB) *App {
 	a := &App{
-		cfg:       cfg,
-		db:        db,
-		hub:       newHub(),
-		tmpl:      template.Must(template.New("").Funcs(templateFuncs).ParseFS(templatesFS, "web/templates/*.html")),
-		static:    map[string]staticFile{},
-		loginMin:  800 * time.Millisecond,
-		heartbeat: 20 * time.Second,
+		cfg:          cfg,
+		db:           db,
+		hub:          newHub(),
+		tmpl:         template.Must(template.New("").Funcs(templateFuncs).ParseFS(templatesFS, "web/templates/*.html")),
+		static:       map[string]staticFile{},
+		loginMin:     800 * time.Millisecond,
+		heartbeat:    20 * time.Second,
+		publicWrites: rateLimiter{counts: map[string]int{}},
 	}
 	fs.WalkDir(staticFS, "web/static", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

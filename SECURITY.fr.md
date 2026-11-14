@@ -120,6 +120,8 @@ couvrent les navigateurs anciens et les erreurs de configuration.
 - Identifiants de **128 bits**, impossibles à deviner.
 - Quand le partage change, chaque compte est évalué avant et après : qui gagne l'accès reçoit la
   liste, qui le perd reçoit un simple retrait, sans contenu.
+- Tout compte connecté peut lister les noms des autres comptes (pour choisir avec qui partager). Sur
+  une instance, chacun sait qui d'autre l'utilise ; ces noms sont aussi les identifiants de connexion.
 
 ### Lien public pour cocher seulement
 
