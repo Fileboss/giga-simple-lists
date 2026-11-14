@@ -100,7 +100,7 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	if old, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
 		deleteSession(a.db, tokenHash(old.Value))
 	}
-	token, s, err := createSession(a.db, u.ID)
+	token, s, err := createSession(a.db, u.ID, r.UserAgent())
 	if err != nil {
 		errorLog(T("log.sessionCreate"), err)
 		writeErr(w, err)

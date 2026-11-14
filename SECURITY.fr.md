@@ -30,9 +30,36 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
   tenir dans la limite mémoire du conteneur.
 - **Même message et même durée** (800 ms au moins) pour toute connexion refusée : compte
   inexistant, mot de passe faux, IP bloquée. On ne peut pas deviner quels comptes existent.
-- **Pas d'inscription en ligne, pas de « mot de passe oublié » par e-mail, pas d'administration
-  web** : les comptes se gèrent uniquement en ligne de commande. Moins de surface d'attaque, et rien
-  à voler par la messagerie.
+- **Pas d'inscription libre, pas d'e-mail** : un compte se crée par un lien d'invitation à usage
+  unique, qu'un admin crée et transmet lui-même. Pas de « mot de passe oublié » par e-mail non plus :
+  un admin crée un lien de nouveau mot de passe. Rien à voler par la messagerie, et pas de serveur de
+  messagerie à configurer.
+
+### Liens d'invitation et de nouveau mot de passe
+
+- Jeton aléatoire de 256 bits dans l'URL ; **seul son SHA-256 est en base**. Un lien n'est affiché
+  qu'une fois, ne sert qu'une fois (consommé dans la transaction qui crée le compte ou change le mot
+  de passe) et expire : 7 jours pour une invitation, 24 h pour un nouveau mot de passe ou le premier
+  compte.
+- L'admin ne voit jamais le mot de passe : la personne le choisit sur la page du lien. Un nouveau mot
+  de passe révoque toutes les sessions du compte.
+- Le lien du premier compte n'est écrit que dans les journaux, au démarrage, et seulement tant que
+  l'instance n'a aucun compte ; il est renouvelé (l'ancien ne sert plus) à chaque démarrage.
+- La page du lien pose `Referrer-Policy: same-origin` : le jeton ne sort jamais du site.
+  (`no-referrer` ferait envoyer `Origin: null` au formulaire, refusé par la protection CSRF.) Son
+  formulaire est protégé comme celui de connexion : `Origin` et jeton CSRF en double soumission.
+
+### Administration
+
+- Les pages d'administration répondent **404** à tout autre compte, comme une liste qu'il ne voit
+  pas, et chaque requête est vérifiée côté serveur. Les formulaires sont du HTML simple, avec les
+  trois mêmes protections CSRF que l'API.
+- L'instance garde toujours au moins un admin : le dernier ne peut pas perdre son rôle, et un admin
+  ne peut pas supprimer son propre compte.
+- Supprimer un compte supprime ses listes ; ses listes partagées disparaissent chez tout le monde en
+  temps réel, et ses sessions et flux temps réel sont coupés aussitôt.
+- Changer son mot de passe exige l'actuel, compté comme une tentative de connexion (mêmes blocage par
+  IP et ralentissement par compte), et déconnecte tous les autres appareils.
 
 ### Limitation des tentatives
 
@@ -62,7 +89,9 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
   est pas envoyé, et l'appli redemandait la connexion à chaque ouverture. `Lax` n'envoie le cookie,
   depuis un autre site, que sur une navigation GET ; aucune route GET ne modifie de données.
 - 90 jours sans visite, 180 jours au plus. Nouvelle session à chaque connexion. Révocation depuis
-  la ligne de commande (`user reset`, `sessions revoke-all`). Le flux temps réel revérifie la
+  la page « Mon compte » (un appareil ou tous les autres), la page d'administration ou la ligne de
+  commande (`user reset`, `sessions revoke-all`). Chaque session garde son User-Agent tronqué (200
+  caractères) pour qu'on reconnaisse ses appareils ; aucune adresse IP n'est gardée. Le flux temps réel revérifie la
   session toutes les 20 s.
 
 ### Requêtes qui modifient : trois protections CSRF

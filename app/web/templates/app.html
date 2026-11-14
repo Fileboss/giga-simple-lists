@@ -86,7 +86,8 @@
 <p id="empty" class="empty" hidden>{{t "ui.empty"}}</p>
 
 <footer class="foot">
-  <span>{{.Name}}</span>
+  <a class="link" href="/account">{{.Name}}</a>
+  {{if .IsAdmin}}<a class="link" href="/admin">{{t "ui.admin"}}</a>{{end}}
   <form method="post" action="/logout">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <button type="submit" class="link">{{t "ui.logout"}}</button>

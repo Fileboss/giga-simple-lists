@@ -49,14 +49,14 @@ func TestMessagesComplete(t *testing.T) {
 			used[m[1]] = f.Name()
 		}
 	}
-	tmplCall := regexp.MustCompile(`\{\{t "([a-zA-Z.]+)"\}\}`)
+	tmplCall := regexp.MustCompile(`\{\{\(?tf? "([a-zA-Z.]+)"|\(tf? "([a-zA-Z.]+)"`)
 	fs.WalkDir(templatesFS, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		src, _ := templatesFS.ReadFile(p)
 		for _, m := range tmplCall.FindAllStringSubmatch(string(src), -1) {
-			used[m[1]] = p
+			used[m[1]+m[2]] = p
 		}
 		return nil
 	})

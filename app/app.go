@@ -79,8 +79,13 @@ func newApp(cfg config, db *sql.DB) *App {
 
 // templateFuncs : t "clé" donne le message dans la langue de l'instance (i18n.go).
 var templateFuncs = template.FuncMap{
-	"t":    T,
-	"lang": func() string { return lang },
+	"t":      T,
+	"tf":     tf,
+	"lang":   func() string { return lang },
+	"device": deviceName,
+	"ago":    ago,
+	"day":    day,
+	"until":  until,
 }
 
 // localizeManifest : nom, description et langue du manifeste dans la langue de l'instance.
@@ -128,6 +133,20 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /login", a.loginPost)
 	mux.HandleFunc("POST /logout", a.authedPage(a.logout))
 	mux.HandleFunc("GET /{$}", a.authedPage(a.appPage))
+
+	mux.HandleFunc("GET /invite/{token}", a.invitePage)
+	mux.HandleFunc("POST /invite/{token}", a.invitePost)
+	mux.HandleFunc("GET /account", a.authedPage(a.accountPage))
+	mux.HandleFunc("POST /account/password", a.authedPage(a.accountPassword))
+	mux.HandleFunc("POST /account/sessions/{id}/revoke", a.authedPage(a.accountRevoke))
+	mux.HandleFunc("POST /account/sessions/revoke-others", a.authedPage(a.accountRevokeOthers))
+	mux.HandleFunc("GET /admin", a.adminOnly(a.adminPage))
+	mux.HandleFunc("POST /admin/invites", a.adminOnly(a.adminInvite))
+	mux.HandleFunc("POST /admin/invites/{id}/delete", a.adminOnly(a.adminDeleteLink))
+	mux.HandleFunc("POST /admin/users/{id}/reset", a.adminOnly(a.adminResetLink))
+	mux.HandleFunc("POST /admin/users/{id}/role", a.adminOnly(a.adminRole))
+	mux.HandleFunc("POST /admin/users/{id}/sign-out", a.adminOnly(a.adminSignOut))
+	mux.HandleFunc("POST /admin/users/{id}/delete", a.adminOnly(a.adminDelete))
 
 	mux.HandleFunc("GET /api/state", a.authedAPI(a.apiState))
 	mux.HandleFunc("GET /api/events", a.authedAPI(a.apiEvents))
@@ -338,6 +357,7 @@ func (a *App) render(w http.ResponseWriter, status int, name string, data any) {
 // appPageData : les limites viennent de store.go, les messages de i18n.go ; app.js les lit dans la page.
 type appPageData struct {
 	UserID, Name, CSRF       string
+	IsAdmin                  bool
 	Colors                   []color
 	MaxItemText, MaxListName int
 	DefaultListName          string
@@ -345,7 +365,7 @@ type appPageData struct {
 }
 
 func (a *App) appPage(w http.ResponseWriter, r *http.Request, s *session) {
-	a.render(w, http.StatusOK, "app.html", appPageData{UserID: s.UserID, Name: s.UserName, CSRF: s.CSRF, Colors: colors,
+	a.render(w, http.StatusOK, "app.html", appPageData{UserID: s.UserID, Name: s.UserName, CSRF: s.CSRF, IsAdmin: s.IsAdmin, Colors: colors,
 		MaxItemText: maxItemText, MaxListName: maxListName, DefaultListName: T("list.default"), Messages: jsMessages()})
 }
 
@@ -362,6 +382,9 @@ func (a *App) housekeeping(ctx context.Context) {
 		if _, err := a.db.Exec(`DELETE FROM login_attempts WHERE last_failure_at < ? AND locked_until < ?`,
 			n-attemptsWindow.Milliseconds(), n); err != nil {
 			slog.Error(T("log.purgeAttempts"), "err", err)
+		}
+		if _, err := a.db.Exec(`DELETE FROM invitations WHERE expires_at < ?`, n); err != nil {
+			slog.Error(T("log.purgeLinks"), "err", err)
 		}
 		select {
 		case <-ctx.Done():

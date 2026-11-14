@@ -1,0 +1,31 @@
+{{template "head" .}}
+<main class="page-box narrow">
+  <h1>{{.Title}}</h1>
+  {{template "notices" .}}
+  {{with .Invite}}
+  <p class="muted">{{if eq .Kind "reset"}}{{tf "reset.intro" .UserName}}{{else if .IsAdmin}}{{t "invite.introAdmin"}}{{else}}{{t "invite.intro"}}{{end}}</p>
+  <form method="post" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    {{if eq .Kind "reset"}}
+    <input type="text" name="name" value="{{.UserName}}" autocomplete="username" hidden>
+    {{else}}
+    <label>{{t "login.name"}}
+      <input name="name" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
+      <small>{{t "invite.nameRule"}}</small>
+    </label>
+    {{end}}
+    <label>{{t "account.newPassword"}}
+      <input name="password" type="password" autocomplete="new-password" required minlength="{{$.MinPassword}}" maxlength="1024">
+      <small>{{tf "account.passwordRule" $.MinPassword}}</small>
+    </label>
+    <label>{{t "account.confirmPassword"}}
+      <input name="confirm" type="password" autocomplete="new-password" required minlength="{{$.MinPassword}}" maxlength="1024">
+    </label>
+    <div><button type="submit" class="primary">{{if eq .Kind "reset"}}{{t "reset.submit"}}{{else}}{{t "invite.submit"}}{{end}}</button></div>
+  </form>
+  {{else}}
+  <p><a class="link" href="/login">{{t "login.submit"}}</a></p>
+  {{end}}
+</main>
+</body>
+</html>

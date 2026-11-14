@@ -29,8 +29,33 @@ second.
   stay within the container's memory limit.
 - **Same message and same duration** (at least 800 ms) for every refused sign-in: unknown account,
   wrong password, blocked IP. Nobody can find out which accounts exist.
-- **No online sign-up, no "forgot password" e-mail, no web administration**: accounts are managed
-  from the command line only. Less attack surface, and nothing to steal through e-mail.
+- **No open sign-up, no e-mail**: accounts are created through single-use invitation links that an
+  admin creates and passes on by hand. No "forgot password" e-mail either: an admin creates a reset
+  link. Nothing to steal through e-mail, and no mail server to configure.
+
+### Invitation and reset links
+
+- 256-bit random token in the URL; **only its SHA-256 is stored**. A link is shown once, works once
+  (consumed in the same transaction that creates the account or sets the password), and expires:
+  7 days for an invitation, 24 h for a password reset or the first account.
+- The admin never sees the password: the person chooses it on the link's page. A reset revokes every
+  session of the account.
+- The first account's link is only written to the logs at startup, and only while the instance has
+  no account; it is renewed (the previous one stops working) at each start.
+- The link's page sets `Referrer-Policy: same-origin`, so the token never leaves the site.
+  (`no-referrer` would make browsers send `Origin: null` with the form, which the CSRF check rejects.)
+  Its form is protected like the sign-in form: `Origin` plus a double-submit CSRF token.
+
+### Administration
+
+- Admin pages answer **404** to any other account, like a list it cannot see, and every request is
+  checked server-side. Forms are plain HTML with the same three CSRF protections as the API.
+- The instance always keeps at least one admin: the last one cannot lose the role, and an admin
+  cannot delete their own account.
+- Deleting an account deletes its lists; its shared lists disappear for everyone in real time, and
+  its sessions and real-time streams are cut immediately.
+- Changing one's password requires the current one, counted as a sign-in attempt (same per-IP
+  blocking and per-account slowdown), and signs out every other device.
 
 ### Rate limiting
 
@@ -59,7 +84,9 @@ second.
   sent, and the app asked to sign in again every time. `Lax` only sends the cookie from another site
   on a GET navigation, and no GET route modifies data.
 - 90 days without a visit, 180 days at most. A new session at every sign-in. Revocation from the
-  command line (`user reset`, `sessions revoke-all`). The real-time stream re-checks the session
+  "Account" page (one device or all the others), the admin page or the command line (`user reset`,
+  `sessions revoke-all`). Each session keeps its truncated User-Agent (200 characters) so people can
+  recognise their devices; no IP address is stored. The real-time stream re-checks the session
   every 20 s.
 
 ### Requests that modify data: three CSRF protections

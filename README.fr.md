@@ -13,6 +13,8 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les
   éléments cochés, « Tout décocher » les remet à faire (courses récurrentes). Quand rien n'est
   coché, le même bouton devient « Tout cocher ».
+- Comptes gérés dans l'appli : liens d'invitation, page d'administration, et page « Mon compte »
+  pour changer de mot de passe et déconnecter ses appareils. Plus besoin de la ligne de commande.
 - Catégories : « # Fruits » dans le champ d'ajout crée un titre qui regroupe les éléments placés
   sous lui (un seul niveau). Elle ne se coche pas, mais se raye quand tous ses éléments sont
   cochés, et se déplace avec eux. Coller plusieurs lignes ajoute un élément par ligne.
@@ -107,14 +109,32 @@ réseau restent mises en file tant que la page est ouverte). L'option est refus�
 
 ## Comptes
 
-Il n'y a pas d'inscription en ligne : les comptes se gèrent en ligne de commande.
+Pas d'inscription libre : on rejoint l'instance par un lien d'invitation. Tout se fait dans l'appli :
+
+- **Premier compte** : au premier démarrage, les journaux donnent un lien à usage unique
+  (`docker compose logs listes | grep invite`) pour créer le premier compte, admin. Il est renouvelé
+  à chaque démarrage tant qu'aucun compte n'existe, et expire au bout de 24 h.
+- **Mon compte** (ton nom, en bas de l'appli) : changer de mot de passe, voir les appareils connectés
+  et les déconnecter. Changer de mot de passe déconnecte tous les autres appareils.
+- **Administration** (admins seulement) : créer un lien d'invitation à usage unique, valable 7 jours,
+  éventuellement pour un admin ; la personne choisit son nom et son mot de passe. Pour chaque compte :
+  un lien de nouveau mot de passe (valable 24 h, l'admin ne voit jamais le mot de passe), rendre ou
+  retirer admin, déconnecter partout, supprimer le compte et ses listes. L'instance garde toujours au
+  moins un admin.
+
+Les liens ne sont affichés qu'une fois et ne servent qu'une fois ; seul leur hash est gardé. Sur une
+instance créée avant la gestion des comptes dans l'appli, le plus ancien compte devient admin.
+
+La ligne de commande reste disponible, pour des scripts ou pour reprendre la main :
 
 ```sh
-docker compose exec listes listes user add <nom>       # affiche un mot de passe généré, une seule fois
+docker compose exec listes listes user invite [--admin]   # affiche un lien d'invitation à usage unique
+docker compose exec listes listes user add <nom>          # affiche un mot de passe généré, une seule fois (le premier compte est admin)
 docker compose exec -T listes listes user add <nom> --password-stdin <<<'mot de passe choisi (15 caractères min.)'
-docker compose exec listes listes user reset <nom>     # nouveau mot de passe, sessions révoquées
+docker compose exec listes listes user reset <nom>        # nouveau mot de passe, sessions révoquées
+docker compose exec listes listes user admin <nom> [--revoke]
 docker compose exec listes listes user list
-docker compose exec listes listes sessions revoke-all  # déconnecte tous les appareils
+docker compose exec listes listes sessions revoke-all     # déconnecte tous les appareils
 ```
 
 ## Sauvegarde

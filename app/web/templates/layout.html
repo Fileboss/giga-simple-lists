@@ -1,0 +1,19 @@
+{{/* En-tête commun des pages de compte, d'administration et des liens. */}}
+{{define "head"}}<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="same-origin">
+<title>{{.Title}} · {{t "app.name"}}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
+</head>
+<body class="page">
+{{end}}
+
+{{define "notices"}}{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}{{end}}
+
+{{define "back"}}<nav class="page-nav"><a class="link" href="/">← {{t "page.backToLists"}}</a>{{if .IsAdmin}}<a class="link" href="/admin">{{t "ui.admin"}}</a>{{end}}<a class="link" href="/account">{{t "account.title"}}</a></nav>{{end}}

@@ -414,7 +414,7 @@ func TestDatabasePragmas(t *testing.T) {
 	h2 := newHarnessAt(t, h.dir)
 	var v int
 	h2.db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 3 {
+	if v != 4 {
 		t.Fatalf("user_version=%d", v)
 	}
 	var maxPages int
