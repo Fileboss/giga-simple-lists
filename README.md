@@ -19,9 +19,13 @@ list is just a series of checkboxes, always editable. One static Go binary, one 
 - **Real time**: check an item on one phone and it appears on the other in under a second (SSE).
 - **Works offline**: the app opens without network on the last lists seen, and changes made offline
   are sent when the connection comes back. Built for the supermarket basement.
-- **Several accounts, private or shared lists.** A list is private by default; the "Share" box makes
-  it visible to every account on the instance, who can then rename it and edit its items. Colour,
-  sharing and deletion stay with its owner.
+- **Several accounts, private or shared lists.** A list is private by default; "Share" makes it
+  visible to every account on the instance, or only to the accounts you pick (say, the parents but
+  not the kids). They can then rename it and edit its items. Colour, sharing and deletion stay with
+  its owner.
+- **Check-only public link**: send a link to someone without an account (a friend doing the
+  shopping for you). They see the list and check items as they go, live and even offline, and can do
+  nothing else: no adding, editing or deleting. Replace or turn off the link at any time.
 - **Accounts managed from the app**: invitation links, an admin page, and an "Account" page to change
   one's password and sign out devices. No command line needed.
 - **Categories**: typing `# Fruit` creates a heading that groups the items below it (one level).
@@ -36,9 +40,10 @@ list is just a series of checkboxes, always editable. One static Go binary, one 
 - Interface in **English or French**, chosen once per instance (`LISTES_LANG`).
 - Images for **amd64, arm64 and arm/v7** (Raspberry Pi 2 and later).
 
-Who sees what: each account has its private lists, visible only to itself. A shared list appears for
-every account on the instance, who can rename it and edit its items; its colour, sharing and
-deletion stay with its owner.
+Who sees what: each account has its private lists, visible only to itself. A list shared with
+everyone appears for every account on the instance; a list shared with specific accounts appears
+only for them. Those accounts can rename it and edit its items; its colour, sharing and deletion
+stay with its owner. A public link only lets people check items.
 
 ```mermaid
 flowchart TB
@@ -287,7 +292,8 @@ every language has every key.
 
 ## Design notes
 
-- **Access**: a single rule, `visibleTo` (owner, or shared list), and a single gate,
+- **Access**: a single rule, `visibleTo` (owner, list shared with everyone, or member of the
+  list), and a single gate,
   `accessList` / `accessItem` (`store.go`), for every route. The SSE stream applies `visibleTo` to
   each recipient, on the list's state after the change. Rights on an item come from its list, looked
   up server-side. Someone else's private list: 404.

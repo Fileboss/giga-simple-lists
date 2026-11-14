@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased (proposed: v2.1.0)
+## Unreleased (proposed: v2.2.0)
+
+### Added
+
+- **Share a list with specific accounts**, not only with everyone (the parents, not the kids). The
+  "Share" button opens a panel: only me, everyone, or specific people.
+- **Check-only public link**: anyone with the link can check and uncheck the list's items, without
+  an account, live and offline; nothing else. The owner can copy, replace or turn off the link.
+
+### Upgrading
+
+- The database is migrated at startup (list members, public links). Nothing changes for existing
+  lists: shared lists stay shared with everyone.
+
+## v2.1.0 (2026-11-14)
 
 ### Added
 

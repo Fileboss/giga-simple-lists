@@ -104,19 +104,38 @@ old browsers and configuration mistakes.
 
 ### Access to lists
 
-- **A single rule** (`visibleTo`: owner, or shared list) and **a single gate**
+- **A single rule** (`visibleTo`: owner, list shared with everyone, or member of the list) and
+  **a single gate**
   (`accessList` / `accessItem`) for every route and for the real-time stream: no check rewritten
   route by route, so no route can forget it.
 - Rights on an item come from its list, looked up server-side; a list identifier sent by the client
   is never trusted.
 - Someone else's private list: **404**, not 403, so as not to reveal that it exists.
 - **128-bit** identifiers, impossible to guess.
+- When sharing changes, each account is evaluated before and after: whoever gains access receives
+  the list, whoever loses it receives a bare removal, with no content.
 
+### Check-only public link
+
+- A 256-bit token in the URL (`/s/<token>`) gives access to **one list**, to check and uncheck
+  its items, and nothing else: no route lets a visitor add, edit, move or delete an item, or read
+  anything about accounts, members or sharing (the public view and its real-time events only carry
+  the items, the name and the colour).
+- The token is stored in clear text, so the owner can copy the link again at any time. It only
+  gives access to what the database already holds in clear text. Replacing the link (or turning it
+  off) invalidates the old token and cuts its visitors' real-time streams immediately.
+- No session, so no CSRF token: writes require the site's `Origin` (and `Sec-Fetch-Site` when
+  present) and a JSON body, which forces a CORS preflight from any other site.
+- At most 120 writes per minute per IP; anonymous real-time streams have their own cap (32 in
+  total, 4 per IP), separate from accounts', so visitors can never take the accounts' streams.
+- `Referrer-Policy: same-origin` and `X-Robots-Tag: noindex`: the token does not leave the site and
+  the page is not indexed.
 ### Browser
 
 - **Strict CSP, no inline script or style**, no external resource (no CDN, no font). Together with
   `html/template`'s automatic escaping, an injected script does not run.
-- Headers set by the app: COOP, CORP, a `Permissions-Policy` that denies everything,
+- Headers set by the app: COOP, CORP, a `Permissions-Policy` that denies everything except the
+  native share sheet (`web-share=(self)`, to send the public link),
   `X-Frame-Options: DENY`, `Cache-Control: no-store` on signed-in pages. HSTS, `nosniff` and
   `Referrer-Policy` must be added by the reverse proxy (README).
 - **Offline**: the service worker always goes to the network first, and only uses its cache when

@@ -17,6 +17,8 @@
     sheet: $('sheet'), sheetLists: $('sheet-lists'), sheetNew: $('sheet-new'), sheetRename: $('sheet-rename'),
     sheetUp: $('sheet-up'), sheetDown: $('sheet-down'), sheetGrip: $('sheet-grip'),
     undo: $('undo'), undoText: $('undo-text'), undoBtn: $('undo-btn'),
+    shareDialog: $('share-dialog'), shareTitle: $('share-title'), sharePeople: $('share-people'),
+    publicOn: $('public-on'), publicBox: $('public-box'), publicUrl: $('public-url'), publicCopy: $('public-copy'), publicReset: $('public-reset'),
   };
   // Téléphone : sélecteur en panneau à la place des onglets (même seuil que le CSS).
   const mobile = matchMedia('(max-width: 699px)');
@@ -26,7 +28,7 @@
   const MESSAGES = JSON.parse($('messages')?.textContent || '{}');
   const t = (key, vars = {}) => (MESSAGES[key] || key).replace(/\{(\w+)\}/g, (_, k) => vars[k]);
 
-  let lists = [];          // [{id, owner_id, owner_name, name, color, shared, position, items: [...]}]
+  let lists = [];          // [{id, owner_id, owner_name, name, color, shared, members: [{id, name}], public, position, items: [...]}]
   let current = null;      // id de la liste affichée
   let loaded = false;
 
@@ -111,6 +113,8 @@
   const byId = (id) => lists.find((l) => l.id === id);
   const currentList = () => byId(current);
   const isMine = (l) => l.owner_id === ME;
+  // Visible par au moins un autre compte (tout le monde, ou des membres choisis).
+  const isShared = (l) => l.shared || (l.members || []).length > 0;
   // Ordre des onglets et du panneau : les miennes, puis celles partagées avec moi.
   const sortedLists = () => [...lists].sort((a, b) => (isMine(b) - isMine(a)) || (a.position - b.position));
 
@@ -201,9 +205,11 @@
     const nonce = randomHex();
     const id = await creationID(nonce);
     const { items, ...meta } = snap;
-    lists.push({ ...meta, id, items: [] });
+    lists.push({ ...meta, id, public: false, items: [] }); // le lien public n'est pas recréé
     undos.forEach((e) => { if (e.listId === snap.id) e.listId = id; });
     send('POST', '/api/lists', { nonce, name: snap.name, color: snap.color, shared: snap.shared, position: snap.position }, [id]);
+    const members = (snap.members || []).map((m) => m.id);
+    if (members.length) send('PATCH', '/api/lists/' + id, { members }, [id]);
     open(id);
     await restoreItems(id, items);
   }
@@ -319,7 +325,7 @@
       const items = (l.items || []).filter((it) => !gone.has(it.id));
       const local = old.get(l.id);
       if (!local) return { ...l, items };
-      const meta = pending.has(l.id) ? { name: local.name, color: local.color, shared: local.shared } : {};
+      const meta = pending.has(l.id) ? { name: local.name, color: local.color, shared: local.shared, members: local.members } : {};
       return { ...l, ...meta, items: mergeItems(local.items, items) };
     });
     old.forEach((l, id) => { if (pending.has(id) && !next.some((x) => x.id === id)) next.push(l); });
@@ -449,9 +455,11 @@
     el.switcherName.textContent = l.name;
     el.switcher.setAttribute('aria-label', t('switcherLabel', { name: l.name }));
     const mine = isMine(l);
-    el.share.checked = l.shared;
-    el.share.disabled = !mine;
+    el.share.hidden = !mine;
+    el.share.textContent = t(isShared(l) || l.public ? 'sharedBtn' : 'shareBtn');
+    el.share.classList.toggle('on', isShared(l) || !!l.public);
     el.ownerTools.hidden = !mine;
+    if (el.shareDialog.open) renderShare(l);
     el.ownerNote.hidden = mine;
     el.ownerNote.textContent = mine ? '' : t('ownerNote', { owner: l.owner_name });
     document.querySelectorAll('input[name="color"]').forEach((r) => { r.checked = r.value === l.color; });
@@ -478,7 +486,7 @@
         from.textContent = ' · ' + t('from', { owner: l.owner_name });
         b.append(from);
       }
-      if (l.shared) {
+      if (isShared(l)) {
         const mark = document.createElement('span');
         mark.className = 'mark';
         mark.textContent = '⇄';
@@ -532,7 +540,7 @@
         from.textContent = t('from', { owner: l.owner_name });
         b.append(from);
       }
-      if (l.shared) {
+      if (isShared(l)) {
         const mark = document.createElement('span');
         mark.className = 'mark';
         mark.textContent = '⇄';
@@ -1191,10 +1199,135 @@
     if (name !== l.name) patchList({ name });
   });
 
-  el.share.addEventListener('change', () => {
+  // ---------------------------------------------------------------------------
+  // Partage (propriétaire) : personne, tout le monde, ou des comptes choisis ; et le lien
+  // public, où l'on ne peut que cocher. Les comptes de l'instance sont demandés à
+  // l'ouverture ; sans réseau, seuls les membres déjà choisis sont affichés.
+
+  let accounts = null; // [{id, name}] : les autres comptes
+  let publicUrl = '';
+
+  async function openShare() {
     const l = currentList();
-    if (l && isMine(l)) patchList({ shared: el.share.checked });
+    if (!l || !isMine(l)) return;
+    publicUrl = '';
+    renderShare(l);
+    el.shareDialog.showModal();
+    try {
+      const [acc, link] = await Promise.all([
+        fetch('/api/accounts', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)),
+        l.public ? fetch('/api/lists/' + l.id + '/public-link', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)) : null,
+      ]);
+      if (acc) accounts = acc;
+      if (link) publicUrl = link.url;
+    } catch { /* hors ligne : on garde ce qu'on sait */ }
+    if (currentList() === l) renderShare(l);
+  }
+
+  function renderShare(l) {
+    el.shareTitle.textContent = t('shareTitle', { q: quote(l.name) });
+    const members = l.members || [];
+    const who = l.shared ? 'everyone' : (members.length || peopleMode ? 'people' : 'private');
+    el.shareDialog.querySelectorAll('input[name="who"]').forEach((r) => { r.checked = r.value === who; });
+    el.sharePeople.hidden = who !== 'people';
+    const known = new Map((accounts || []).map((a) => [a.id, a.name]));
+    members.forEach((m) => { if (!known.has(m.id)) known.set(m.id, m.name); });
+    const chosen = new Set(members.map((m) => m.id));
+    el.sharePeople.replaceChildren(...[...known].map(([id, name]) => {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = id;
+      box.checked = chosen.has(id);
+      label.append(box, ' ' + name);
+      return label;
+    }));
+    if (!known.size) {
+      const p = document.createElement('p');
+      p.className = 'muted';
+      p.textContent = t(accounts ? 'noAccounts' : 'accountsOffline');
+      el.sharePeople.append(p);
+    }
+    el.publicOn.checked = !!l.public;
+    el.publicBox.hidden = !l.public || !publicUrl;
+    el.publicUrl.value = publicUrl;
+    el.publicCopy.textContent = t(navigator.share ? 'sendLink' : 'copyLink');
+  }
+
+  let peopleMode = false; // « Des comptes précis » choisi, aucun encore coché
+  function setSharing(shared, members) {
+    const l = currentList();
+    if (!l) return;
+    l.shared = shared;
+    l.members = members;
+    send('PATCH', '/api/lists/' + l.id, { shared, members: members.map((m) => m.id) }, [l.id]);
+    render();
+  }
+
+  el.share.addEventListener('click', openShare);
+  el.shareDialog.addEventListener('close', () => { peopleMode = false; });
+  el.shareDialog.addEventListener('click', (e) => { if (e.target === el.shareDialog) el.shareDialog.close(); });
+  el.shareDialog.addEventListener('change', async (e) => {
+    const l = currentList();
+    if (!l || !isMine(l)) return;
+    const r = e.target;
+    if (r.name === 'who') {
+      peopleMode = r.value === 'people';
+      if (r.value === 'everyone') setSharing(true, []);
+      else if (r.value === 'private') setSharing(false, []);
+      else if (l.shared) setSharing(false, []);
+      renderShare(l);
+    } else if (r.closest('#share-people')) {
+      const ids = [...el.sharePeople.querySelectorAll('input:checked')].map((x) => x.value);
+      const names = new Map([...(accounts || []), ...(l.members || [])].map((m) => [m.id, m.name]));
+      peopleMode = true;
+      setSharing(false, ids.map((id) => ({ id, name: names.get(id) })));
+    } else if (r === el.publicOn) {
+      await setPublicLink(l, r.checked);
+    }
   });
+
+  // Lien public : créé, remplacé ou révoqué tout de suite (il faut le réseau).
+  async function setPublicLink(l, on) {
+    let res;
+    try {
+      res = await fetch('/api/lists/' + l.id + '/public-link', {
+        method: on ? 'POST' : 'DELETE',
+        headers: { 'X-CSRF-Token': CSRF },
+        credentials: 'same-origin',
+      });
+    } catch {
+      res = null;
+    }
+    if (!res || !res.ok) {
+      toast(t('needsNetwork'));
+      renderShare(l);
+      return;
+    }
+    l.public = on;
+    publicUrl = on ? (await res.json()).url : '';
+    render();
+    renderShare(l);
+  }
+
+  el.publicReset.addEventListener('click', () => {
+    const l = currentList();
+    if (l && isMine(l)) setPublicLink(l, true); // l'ancien lien cesse de marcher
+  });
+  el.publicCopy.addEventListener('click', async () => {
+    if (!publicUrl) return;
+    if (navigator.share) {
+      try { await navigator.share({ url: publicUrl }); } catch { /* partage annulé */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      toast(t('linkCopied'));
+    } catch {
+      el.publicUrl.select(); // presse-papiers indisponible (HTTP simple) : à copier soi-même
+    }
+  });
+  el.publicUrl.addEventListener('focus', () => el.publicUrl.select());
   document.querySelectorAll('input[name="color"]').forEach((r) => r.addEventListener('change', () => {
     const l = currentList();
     if (l && isMine(l) && r.checked) patchList({ color: r.value });

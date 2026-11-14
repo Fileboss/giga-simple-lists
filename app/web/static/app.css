@@ -185,16 +185,15 @@ button:hover { background-color: rgba(var(--shade), .04); }
   background: transparent;
 }
 .title:focus { outline: none; border-bottom-color: var(--line); }
-.share {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-height: 44px;
+/* Bouton « Partager » : ouvre le panneau de partage ; « Partagée » quand d'autres la voient. */
+.share-btn {
+  flex: none;
   white-space: nowrap;
   font-size: 15px;
   color: var(--muted);
-  cursor: pointer;
+  border-color: rgba(var(--shade), .14);
 }
+.share-btn.on::before { content: "⇄"; margin-right: 6px; font-size: 13px; }
 /* Téléphone : le titre est un bouton qui ouvre le panneau des listes (le nom s'édite
    à sa place, classe renaming). */
 .switcher { display: none; }
@@ -379,7 +378,6 @@ input[type="checkbox"]:checked {
   background-image: url("/static/check.svg");
 }
 input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
-.share input { width: 20px; height: 20px; }
 
 .add { position: relative; display: flex; align-items: center; margin: 16px 0 8px; }
 .add input {
@@ -629,6 +627,61 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .login-box input:focus { outline: none; border-bottom-color: var(--accent); }
 .login-box button { margin-top: 12px; color: var(--paper); background: var(--ink); border-color: var(--ink); }
 .error { margin: 0 0 20px; font-size: 15px; text-align: center; color: var(--danger); }
+
+/* Panneau de partage : boîte de dialogue centrée, en bas de l'écran sur téléphone. */
+.share-dialog {
+  width: min(100% - 32px, 460px);
+  max-height: 90vh;
+  max-height: 90dvh;
+  padding: 0;
+  border: 0;
+  border-radius: 20px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 18px 48px rgba(var(--shadow), .2);
+}
+.share-dialog::backdrop { background: rgba(46, 46, 44, .28); }
+.share-body { display: flex; flex-direction: column; gap: 22px; padding: 22px 24px 20px; }
+.share-body h2 { margin: 0; font: 400 22px/1.25 var(--serif); overflow-wrap: anywhere; }
+.share-body fieldset { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; border: 0; }
+.share-body legend { padding: 0; margin-bottom: 6px; font-size: 14px; color: var(--muted); }
+.share-body label { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.share-body p.muted { margin: 0; font-size: 14px; }
+.share-body input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1.5px solid var(--faint);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.share-body input[type="radio"]:checked { border: 6px solid var(--accent); }
+.share-people { padding-left: 32px; }
+.public-box { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.public-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.public-tools button { font-size: 15px; color: var(--muted); }
+.share-done { display: flex; justify-content: flex-end; }
+.share-done .done { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+@media (max-width: 699px) {
+  .share-dialog { width: 100%; max-width: none; margin: auto 0 0; border-radius: 20px 20px 0 0; }
+  .share-body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+
+/* Page d'un lien public : la liste seule, on ne peut que cocher. */
+.public-title { margin: 0; padding: 4px 0; }
+.public-row { flex: 1; display: flex; align-items: center; gap: 0; min-height: 44px; cursor: pointer; }
+.public-row input { margin: 0 18px 0 9px; }
+.public-item .text { display: block; padding: 10px 2px; min-height: 0; overflow-wrap: anywhere; }
+.item.category.public-item .text { padding-left: 8px; }
+.public-gone { margin: 24px 0 0; color: var(--muted); }
+body.public #note { margin-bottom: 14px; }
+@media (max-width: 699px) {
+  body.public .list-head { position: static; }
+  body.public .list-head .title { display: block; }
+}
 
 /* Pages de réglages (mon compte, administration) et des liens. Inspirées des réglages
    habituels (iOS, GitHub, Linear) : navigation à gauche, sections titrées au-dessus de

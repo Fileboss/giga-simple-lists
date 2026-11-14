@@ -3,9 +3,9 @@
 // L'API et le flux SSE ne passent pas par ici : app.js garde sa propre copie des listes.
 'use strict';
 
-const CACHE = 'listes-v2';
+const CACHE = 'listes-v3';
 const PAGE = '/'; // la page de l'appli : propre à la session, effacée à la déconnexion
-const ASSETS = ['/static/app.js', '/static/app.css', '/static/check.svg', '/static/icon.svg',
+const ASSETS = ['/static/app.js', '/static/public.js', '/static/app.css', '/static/check.svg', '/static/icon.svg',
   '/static/icon-192.png', '/manifest.webmanifest'];
 const TIMEOUT = 4000; // réseau qui ne répond pas (supermarché) : même seuil que le bandeau d'app.js
 
@@ -39,6 +39,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   if (req.mode === 'navigate' && url.pathname === PAGE) {
     e.respondWith(page(e));
+  } else if (req.mode === 'navigate' && url.pathname.startsWith('/s/')) {
+    e.respondWith(publicPage(e, url.pathname));
   } else if (url.pathname.startsWith('/static/') || url.pathname === '/manifest.webmanifest') {
     e.respondWith(offlineClients.has(e.clientId) ? fromCache(req) : networkFirst(e, req).then((r) => r.response));
   }
@@ -48,6 +50,15 @@ async function page(e) {
   const { response, fromCache } = await networkFirst(e, e.request, PAGE);
   // Session expirée : le serveur redirige vers /login ; la page en cache n'est plus valable.
   if (response.type === 'opaqueredirect') e.waitUntil(forget());
+  if (fromCache) offlineClients.add(e.resultingClientId);
+  return response;
+}
+
+// Page d'un lien public : comme la page de l'appli, ouvrable sans réseau. Un lien
+// révoqué (404) est oublié.
+async function publicPage(e, key) {
+  const { response, fromCache } = await networkFirst(e, e.request, key);
+  if (response.status === 404) e.waitUntil(caches.open(CACHE).then((c) => c.delete(key)));
   if (fromCache) offlineClients.add(e.resultingClientId);
   return response;
 }

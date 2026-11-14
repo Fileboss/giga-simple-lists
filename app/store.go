@@ -37,15 +37,24 @@ type invalidError string
 func (e invalidError) Error() string { return T(string(e)) }
 
 type List struct {
-	ID        string `json:"id"`
-	OwnerID   string `json:"owner_id"`
-	OwnerName string `json:"owner_name"`
-	Name      string `json:"name"`
-	Color     string `json:"color"`
-	Shared    bool   `json:"shared"`
-	Position  int64  `json:"position"`
-	Items     []Item `json:"items,omitempty"`
+	ID        string   `json:"id"`
+	OwnerID   string   `json:"owner_id"`
+	OwnerName string   `json:"owner_name"`
+	Name      string   `json:"name"`
+	Color     string   `json:"color"`
+	Shared    bool     `json:"shared"`  // visible par tous les comptes
+	Members   []member `json:"members"` // ou seulement par ces comptes
+	Public    bool     `json:"public"`  // lien public actif (le jeton n'est envoyé qu'au propriétaire)
+	Position  int64    `json:"position"`
+	Items     []Item   `json:"items,omitempty"`
 }
+
+type member struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+const maxMembers = 50
 
 type Item struct {
 	ID        string `json:"id"`
@@ -68,11 +77,22 @@ type querier interface {
 // accès à une liste ou à un élément passe par accessList / accessItem.
 // Le flux SSE filtre ses destinataires avec visibleTo (voir events.go).
 
-// visibleTo : une liste est visible (et modifiable) par son propriétaire, ou par
-// tous les utilisateurs si elle est partagée.
+// visibleTo : une liste est visible (et modifiable) par son propriétaire, par tous les
+// utilisateurs si elle est partagée avec tout le monde, sinon par ses membres.
 func visibleTo(l *List, userID string) bool {
-	return l.OwnerID == userID || l.Shared
+	if l.OwnerID == userID || l.Shared {
+		return true
+	}
+	for _, m := range l.Members {
+		if m.ID == userID {
+			return true
+		}
+	}
+	return false
 }
+
+// isShared : visible par au moins un autre compte.
+func (l *List) isShared() bool { return l.Shared || len(l.Members) > 0 }
 
 // accessList renvoie la liste si userID peut la voir. Absente ou invisible :
 // errNotFound dans les deux cas (404), pour ne pas révéler qu'elle existe.
@@ -115,23 +135,30 @@ func visibleLists(q querier, userID string) ([]*List, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lists []*List
-	byID := map[string]*List{}
+	var all []*List
 	for rows.Next() {
 		l, err := scanList(rows)
 		if err != nil {
 			rows.Close()
 			return nil, err
 		}
+		all = append(all, l)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := attachMembers(q, all...); err != nil {
+		return nil, err
+	}
+	var lists []*List
+	byID := map[string]*List{}
+	for _, l := range all {
 		if visibleTo(l, userID) {
 			l.Items = []Item{}
 			lists = append(lists, l)
 			byID[l.ID] = l
 		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	rows, err = q.Query(itemSelect + ` ORDER BY position`)
 	if err != nil {
@@ -153,7 +180,7 @@ func visibleLists(q querier, userID string) ([]*List, error) {
 // ---------------------------------------------------------------------------
 // Lectures
 
-const listSelect = `SELECT l.id, l.owner_id, u.name, l.name, l.color, l.shared, l.position
+const listSelect = `SELECT l.id, l.owner_id, u.name, l.name, l.color, l.shared, l.public_token IS NOT NULL, l.position
 	FROM lists l JOIN users u ON u.id = l.owner_id`
 
 const itemSelect = `SELECT id, list_id, text, checked, category, position, updated_at FROM items`
@@ -161,9 +188,42 @@ const itemSelect = `SELECT id, list_id, text, checked, category, position, updat
 type scanner interface{ Scan(...any) error }
 
 func scanList(s scanner) (*List, error) {
-	var l List
-	err := s.Scan(&l.ID, &l.OwnerID, &l.OwnerName, &l.Name, &l.Color, &l.Shared, &l.Position)
+	l := List{Members: []member{}}
+	err := s.Scan(&l.ID, &l.OwnerID, &l.OwnerName, &l.Name, &l.Color, &l.Shared, &l.Public, &l.Position)
 	return &l, err
+}
+
+// attachMembers complète les listes avec leurs membres (dans l'ordre des noms).
+func attachMembers(q querier, lists ...*List) error {
+	if len(lists) == 0 {
+		return nil
+	}
+	byID := make(map[string]*List, len(lists))
+	for _, l := range lists {
+		byID[l.ID] = l
+	}
+	query := `SELECT m.list_id, u.id, u.name FROM list_members m JOIN users u ON u.id = m.user_id`
+	var args []any
+	if len(lists) == 1 {
+		query += ` WHERE m.list_id = ?`
+		args = append(args, lists[0].ID)
+	}
+	rows, err := q.Query(query+` ORDER BY u.name COLLATE NOCASE`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var listID string
+		var m member
+		if err := rows.Scan(&listID, &m.ID, &m.Name); err != nil {
+			return err
+		}
+		if l := byID[listID]; l != nil {
+			l.Members = append(l.Members, m)
+		}
+	}
+	return rows.Err()
 }
 
 func scanItem(s scanner) (*Item, error) {
@@ -177,7 +237,10 @@ func loadList(q querier, id string) (*List, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errNotFound
 	}
-	return l, err
+	if err != nil {
+		return nil, err
+	}
+	return l, attachMembers(q, l)
 }
 
 func loadItem(q querier, id string) (*Item, error) {
@@ -299,9 +362,10 @@ func createList(tx querier, userID, nonce, name, color string, shared bool, posi
 }
 
 type listPatch struct {
-	Name   *string `json:"name"`
-	Color  *string `json:"color"`
-	Shared *bool   `json:"shared"`
+	Name    *string   `json:"name"`
+	Color   *string   `json:"color"`
+	Shared  *bool     `json:"shared"`
+	Members *[]string `json:"members"` // identifiants des comptes ; remplace la liste entière
 }
 
 func updateList(tx querier, userID, listID string, p listPatch) (before, after *List, err error) {
@@ -335,12 +399,54 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 		}
 		l.Shared = *p.Shared
 	}
+	if p.Members != nil {
+		if err := requireOwner(before, userID); err != nil {
+			return nil, nil, err
+		}
+		if l.Members, err = setMembers(tx, &l, *p.Members); err != nil {
+			return nil, nil, err
+		}
+	}
 	_, err = tx.Exec(`UPDATE lists SET name = ?, color = ?, shared = ?, updated_at = ? WHERE id = ?`,
 		l.Name, l.Color, l.Shared, nowMs(), l.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return before, &l, nil
+}
+
+// setMembers remplace les membres de la liste : des comptes existants, sans le
+// propriétaire ni doublon. Un identifiant inconnu est refusé.
+func setMembers(tx querier, l *List, ids []string) ([]member, error) {
+	if len(ids) > maxMembers {
+		return nil, errLimit
+	}
+	if _, err := tx.Exec(`DELETE FROM list_members WHERE list_id = ?`, l.ID); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{l.OwnerID: true}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if !validID(id) {
+			return nil, invalidError("err.member")
+		}
+		res, err := tx.Exec(`INSERT INTO list_members (list_id, user_id) SELECT ?, id FROM users WHERE id = ?`, l.ID, id)
+		n, err := rowsAffected(res, err)
+		if err != nil {
+			return nil, err
+		}
+		if n != 1 {
+			return nil, invalidError("err.member")
+		}
+	}
+	cp := List{ID: l.ID, Members: []member{}}
+	if err := attachMembers(tx, &cp); err != nil {
+		return nil, err
+	}
+	return cp.Members, nil
 }
 
 func deleteList(tx querier, userID, listID string) (*List, error) {

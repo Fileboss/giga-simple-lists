@@ -86,7 +86,8 @@ func (a *App) apiUpdateList(w http.ResponseWriter, r *http.Request, s *session) 
 		}
 		after = aft
 		var items []Item
-		if !before.Shared && after.Shared {
+		// Quelqu'un peut découvrir la liste : il la reçoit avec ses éléments.
+		if after.isShared() && (p.Shared != nil || p.Members != nil) {
 			if items, err = loadItems(tx, id); err != nil {
 				return nil, err
 			}
@@ -337,7 +338,12 @@ func (a *App) apiEvents(w http.ResponseWriter, r *http.Request, s *session) {
 		return
 	}
 	defer a.hub.unsubscribe(sub)
+	a.stream(w, r, sub, func() bool { return sessionAlive(a.db, s.Hash) })
+}
 
+// stream envoie les événements de sub jusqu'à la déconnexion, avec un battement surveillé
+// par le client ; alive est revérifié à chaque battement.
+func (a *App) stream(w http.ResponseWriter, r *http.Request, sub *subscriber, alive func() bool) {
 	// Pas de WriteTimeout ni de ReadTimeout pour cette seule connexion, qui dure.
 	rc := http.NewResponseController(w)
 	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
@@ -368,7 +374,7 @@ func (a *App) apiEvents(w http.ResponseWriter, r *http.Request, s *session) {
 		case ev := <-sub.ch:
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, ev.data)
 		case <-tick.C:
-			if !sessionAlive(a.db, s.Hash) {
+			if !alive() {
 				return
 			}
 			fmt.Fprint(w, "event: ping\ndata: \n\n") // signe de vie, surveillé par le client

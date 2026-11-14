@@ -34,7 +34,7 @@
   <div id="list-head" class="list-head">
     <button id="switcher" class="switcher" type="button" aria-haspopup="dialog" aria-label="{{t "ui.switchList"}}"><span id="switcher-name" class="name"></span><span class="chev" aria-hidden="true"></span></button>
     <input id="title" class="title" maxlength="{{.MaxListName}}" aria-label="{{t "ui.listName"}}" autocomplete="off" enterkeyhint="done">
-    <label class="share"><input id="share" type="checkbox"> {{t "ui.share"}}</label>
+    <button id="share" class="share-btn" type="button" aria-haspopup="dialog">{{t "ui.share"}}</button>
   </div>
   <p id="owner-note" class="owner-note" hidden></p>
 
@@ -81,6 +81,33 @@
       <button id="sheet-rename" type="button">{{t "ui.rename"}}</button>
     </div>
   </div>
+</dialog>
+
+<!-- Partage d'une liste (propriétaire) : avec qui, et lien public où l'on ne peut que cocher. -->
+<dialog id="share-dialog" class="share-dialog" aria-labelledby="share-title">
+  <form method="dialog" class="share-body">
+    <h2 id="share-title"></h2>
+    <fieldset class="share-who">
+      <legend>{{t "share.who"}}</legend>
+      <label><input type="radio" name="who" value="private"> {{t "share.private"}}</label>
+      <label><input type="radio" name="who" value="everyone"> {{t "share.everyone"}}</label>
+      <label><input type="radio" name="who" value="people"> {{t "share.people"}}</label>
+      <div id="share-people" class="share-people" hidden></div>
+    </fieldset>
+    <fieldset class="share-public">
+      <legend>{{t "share.publicLink"}}</legend>
+      <label><input id="public-on" type="checkbox"> {{t "share.publicOn"}}</label>
+      <p class="muted">{{t "share.publicHelp"}}</p>
+      <div id="public-box" class="public-box" hidden>
+        <input id="public-url" class="link-field" type="text" readonly aria-label="{{t "share.publicLink"}}">
+        <div class="public-tools">
+          <button id="public-copy" type="button"></button>
+          <button id="public-reset" type="button">{{t "share.newLink"}}</button>
+        </div>
+      </div>
+    </fieldset>
+    <div class="share-done"><button value="close" class="done">{{t "share.done"}}</button></div>
+  </form>
 </dialog>
 
 <p id="empty" class="empty" hidden>{{t "ui.empty"}}</p>

@@ -7,9 +7,14 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 
 ![Une liste de courses rangée par catégories (fruits et légumes, frais, épicerie) : éléments à cocher, cochés en bas de leur catégorie, onglets des autres listes en haut](docs/screenshots/courses.png)
 
-- Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
-  rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
-  éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
+- Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; « Partager » la rend
+  visible par tous les comptes de l'instance, ou seulement par les comptes choisis (les parents,
+  pas les enfants). Ils peuvent alors la renommer et en modifier les éléments ; la couleur, le
+  partage et la suppression restent réservés à son propriétaire.
+- Lien public pour cocher seulement : un lien à envoyer à quelqu'un sans compte (l'ami qui fait les
+  courses). Il voit la liste et coche au fur et à mesure, en temps réel et même hors ligne, et ne
+  peut rien faire d'autre : ni ajouter, ni modifier, ni supprimer. Le lien se remplace ou se coupe à
+  tout moment.
 - Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les
   éléments cochés, « Tout décocher » les remet à faire (courses récurrentes). Quand rien n'est
   coché, le même bouton devient « Tout cocher ».
@@ -31,9 +36,10 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo, pour
   amd64, arm64 et arm/v7 (Raspberry Pi 2 et suivants).
 
-Qui voit quoi : chaque compte a ses listes privées, que lui seul voit. Une liste partagée apparaît
-chez tous les comptes de l'instance, qui peuvent la renommer et en modifier les éléments ; sa
-couleur, son partage et sa suppression restent à son propriétaire.
+Qui voit quoi : chaque compte a ses listes privées, que lui seul voit. Une liste partagée avec tout
+le monde apparaît chez tous les comptes de l'instance ; une liste partagée avec des comptes précis,
+seulement chez eux. Ils peuvent la renommer et en modifier les éléments ; sa couleur, son partage et
+sa suppression restent à son propriétaire. Un lien public ne permet que de cocher.
 
 ```mermaid
 flowchart TB
@@ -243,7 +249,8 @@ de chaque plateforme fait moins de 20 Mo avant de la publier. Les traductions so
 
 ## Points de conception
 
-- **Accès** : une seule règle, `visibleTo` (propriétaire, ou liste partagée), et un seul passage
+- **Accès** : une seule règle, `visibleTo` (propriétaire, liste partagée avec tout le monde, ou
+  membre de la liste), et un seul passage
   obligé, `accessList` / `accessItem` (`store.go`), pour toutes les routes. Le flux SSE applique
   `visibleTo` à chaque destinataire, sur l'état de la liste après la modification.
   Le droit sur un élément vient de sa liste, retrouvée côté serveur. Liste privée d'un autre : 404.
