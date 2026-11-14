@@ -37,13 +37,13 @@ func throttled(msg string) (ok bool, skipped int) {
 // throttledLog : avertissement limité à une ligne par minute pour un même message.
 func throttledLog(msg string, args ...any) {
 	if ok, skipped := throttled(msg); ok {
-		slog.Warn(msg, append(args, "sautés", skipped)...)
+		slog.Warn(msg, append(args, T("log.skipped"), skipped)...)
 	}
 }
 
 // errorLog : erreur interne, limitée à une ligne par minute pour un même contexte.
 func errorLog(context string, err error) {
 	if ok, skipped := throttled("erreur : " + context); ok {
-		slog.Error(context, "err", err, "sautés", skipped)
+		slog.Error(context, "err", err, T("log.skipped"), skipped)
 	}
 }

@@ -1,30 +1,31 @@
 <!doctype html>
-<html lang="fr">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Listes · connexion</title>
+<title>{{t "page.login"}}</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Listes">
-<meta name="theme-color" content="#fbfaf7">
+<meta name="apple-mobile-web-app-title" content="{{t "app.name"}}">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
 </head>
 <body class="login">
 <main class="login-box">
-  <h1>Listes</h1>
+  <h1>{{t "app.name"}}</h1>
   {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
   <form method="post" action="/login">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>Nom
+    <label>{{t "login.name"}}
       <input name="name" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
     </label>
-    <label>Mot de passe
+    <label>{{t "login.password"}}
       <input name="password" type="password" autocomplete="current-password" required maxlength="1024">
     </label>
-    <button type="submit">Se connecter</button>
+    <button type="submit">{{t "login.submit"}}</button>
   </form>
 </main>
 </body>

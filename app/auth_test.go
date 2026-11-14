@@ -105,7 +105,7 @@ func TestLoginFailuresLookIdentical(t *testing.T) {
 		}
 		// Le corps ne diffère que par le jeton CSRF : on le neutralise.
 		body := stripCSRF(r.Body)
-		if !strings.Contains(body, loginFailed) {
+		if !strings.Contains(body, T("login.failed")) {
 			t.Fatalf("%s : message absent", name)
 		}
 		if ref == "" {
@@ -330,7 +330,7 @@ func TestUserResetRevokesSessionsAndChangesPassword(t *testing.T) {
 	if verifyPassword(u.PasswordHash, testPassword) {
 		t.Fatal("mot de passe inchangé")
 	}
-	if !strings.Contains(out.String(), "sessions révoquées") {
+	if !strings.Contains(out.String(), "sessions revoked") {
 		t.Fatalf("sortie : %s", out.String())
 	}
 }
@@ -342,7 +342,7 @@ func TestUserAddCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := out.String()
-	if !strings.Contains(o, "Mot de passe") || strings.Contains(strings.ToLower(o), "totp") {
+	if !strings.Contains(o, "Password") || strings.Contains(strings.ToLower(o), "totp") {
 		t.Fatalf("sortie : %s", o)
 	}
 	if err := adminCommand(&out, nil, h.db, []string{"user", "add", "ZOÉ"}); err == nil {

@@ -14,14 +14,12 @@ import (
 
 const loginCSRFCookie = "__Host-login"
 
-const loginFailed = "Identifiant ou mot de passe incorrect."
-
 type loginPageData struct {
 	CSRF, Error string
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(sessionCookie); err == nil {
+	if c, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
 		if _, _, err := lookupSession(a.db, c.Value); err == nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
@@ -33,7 +31,7 @@ func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
 // renderLogin pose un nouveau jeton CSRF de connexion (double soumission : cookie + champ caché).
 func (a *App) renderLogin(w http.ResponseWriter, status int, msg string) {
 	tok := randomToken()
-	setCookie(w, loginCSRFCookie, tok, 3600, http.SameSiteStrictMode)
+	a.setCookie(w, loginCSRFCookie, tok, 3600, http.SameSiteStrictMode)
 	a.render(w, status, "login.html", loginPageData{CSRF: tok, Error: msg})
 }
 
@@ -43,12 +41,18 @@ var slowSem = make(chan struct{}, 32)
 func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r, a.cfg.TrustedProxies)
 
-	c, err := r.Cookie(loginCSRFCookie)
+	c, err := r.Cookie(a.cookieName(loginCSRFCookie))
 	if !a.sameOrigin(r) || err != nil || r.ParseForm() != nil ||
 		subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.Value)) != 1 {
-		slog.Warn("connexion refusée : origine ou jeton CSRF invalide", "ip", ip)
+		slog.Warn(T("log.loginRefusedCSRF"), "ip", ip)
 		// Formulaire HTML classique : on réaffiche la page (cas typique : jeton expiré après 1 h).
-		a.renderLogin(w, http.StatusForbidden, "Page expirée, veuillez réessayer.")
+		// Page ouverte à une autre adresse que LISTES_ORIGIN (http://<ip>:5240 au lieu de
+		// l'URL publique, erreur classique d'une première installation) : on le dit.
+		msg := T("login.expired")
+		if o := r.Header.Get("Origin"); o != "" && o != a.cfg.Origin {
+			msg = tf("login.wrongOrigin", a.cfg.Origin)
+		}
+		a.renderLogin(w, http.StatusForbidden, msg)
 		return
 	}
 
@@ -64,8 +68,8 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 		case slowSem <- struct{}{}:
 		default:
 			// Trop de tentatives ralenties en attente : refus immédiat, sans vérifier.
-			throttledLog("connexion refusée : trop de tentatives ralenties en attente", "ip", ip)
-			a.renderLogin(w, http.StatusUnauthorized, loginFailed)
+			throttledLog(T("log.loginQueueFull"), "ip", ip)
+			a.renderLogin(w, http.StatusUnauthorized, T("login.failed"))
 			return
 		}
 		http.NewResponseController(w).SetWriteDeadline(time.Now().Add(delay + a.loginMin + 15*time.Second))
@@ -87,23 +91,23 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(d)
 	}
 	if u == nil {
-		a.renderLogin(w, http.StatusUnauthorized, loginFailed)
+		a.renderLogin(w, http.StatusUnauthorized, T("login.failed"))
 		return
 	}
 
 	// Nouvelle session à chaque connexion ; l'éventuelle ancienne est détruite.
-	if old, err := r.Cookie(sessionCookie); err == nil {
+	if old, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
 		deleteSession(a.db, tokenHash(old.Value))
 	}
 	token, s, err := createSession(a.db, u.ID)
 	if err != nil {
-		errorLog("création de session", err)
+		errorLog(T("log.sessionCreate"), err)
 		writeErr(w, err)
 		return
 	}
-	slog.Info("connexion réussie", "ip", ip, "user", u.Name)
-	clearCookie(w, loginCSRFCookie)
-	setSessionCookie(w, token, s)
+	slog.Info(T("log.loginOK"), "ip", ip, "user", u.Name)
+	a.clearCookie(w, loginCSRFCookie)
+	a.setSessionCookie(w, token, s)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -132,17 +136,17 @@ func (a *App) authenticate(ip, name, password string) *user {
 	switch {
 	case blocked:
 		// Une IP bloquée qui insiste ne remplit pas le journal : une ligne par minute au plus.
-		throttledLog("connexion refusée : IP bloquée (trop de tentatives)", "ip", ip)
+		throttledLog(T("log.loginBlockedIP"), "ip", ip)
 		return nil
 	case len(password) > 1024:
-		reason = "mot de passe trop long"
+		reason = T("log.causePasswordLong")
 	default:
 		pwOK := verifyPassword(hash, password)
 		switch {
 		case u == nil:
-			reason = "compte inconnu"
+			reason = T("log.causeUnknownAccount")
 		case !pwOK:
-			reason = "mot de passe"
+			reason = T("log.causePassword")
 		default:
 			if err := clearFailures(a.db, keys...); err != nil {
 				errorLog("login_attempts", err)
@@ -156,15 +160,15 @@ func (a *App) authenticate(ip, name, password string) *user {
 	if err := recordFailure(a.db, keys[1], accountRule); err != nil {
 		errorLog("login_attempts", err)
 	}
-	slog.Warn("connexion refusée", "ip", ip, "user", logName, "cause", reason)
+	slog.Warn(T("log.loginRefused"), "ip", ip, "user", logName, T("log.cause"), reason)
 	return nil
 }
 
 func (a *App) logout(w http.ResponseWriter, r *http.Request, s *session) {
 	if err := deleteSession(a.db, s.Hash); err != nil {
-		errorLog("déconnexion", err)
+		errorLog(T("log.logout"), err)
 	}
 	a.hub.closeSession(s.Hash)
-	clearCookie(w, sessionCookie)
+	a.clearCookie(w, sessionCookie)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

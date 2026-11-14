@@ -1,93 +1,95 @@
 <!doctype html>
-<html lang="fr">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Listes</title>
+<title>{{t "app.name"}}</title>
 <meta name="csrf-token" content="{{.CSRF}}">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Listes">
-<meta name="theme-color" content="#fbfaf7">
+<meta name="apple-mobile-web-app-title" content="{{t "app.name"}}">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
+<script id="messages" type="application/json">{{.Messages}}</script>
 <script src="/static/app.js" defer></script>
 </head>
 <body data-me="{{.UserID}}" data-name="{{.Name}}" data-default-list-name="{{.DefaultListName}}">
 <header class="bar">
-  <button id="tabs-prev" class="tabs-nav" type="button" aria-label="Listes précédentes" hidden>‹</button>
-  <nav id="tabs" class="tabs" aria-label="Listes"></nav>
-  <button id="tabs-next" class="tabs-nav" type="button" aria-label="Listes suivantes" hidden>›</button>
+  <button id="tabs-prev" class="tabs-nav" type="button" aria-label="{{t "ui.prevLists"}}" hidden>‹</button>
+  <nav id="tabs" class="tabs" aria-label="{{t "ui.lists"}}"></nav>
+  <button id="tabs-next" class="tabs-nav" type="button" aria-label="{{t "ui.nextLists"}}" hidden>›</button>
   <button id="new-list" class="new-list" type="button" aria-label="{{.DefaultListName}}">+</button>
 </header>
 
 <div class="notices">
   <p id="toast" class="toast" role="status" hidden></p>
-  <div id="undo" class="undo" role="status" hidden><span id="undo-text"></span><button id="undo-btn" type="button">Annuler</button></div>
-  <p id="offline" class="offline" role="status" hidden>Hors ligne · envoi au retour du réseau</p>
+  <div id="undo" class="undo" role="status" hidden><span id="undo-text"></span><button id="undo-btn" type="button">{{t "ui.undo"}}</button></div>
+  <p id="offline" class="offline" role="status" hidden>{{t "ui.offline"}}</p>
 </div>
 
 <main id="list" class="list" hidden>
   <div id="list-head" class="list-head">
-    <button id="switcher" class="switcher" type="button" aria-haspopup="dialog" aria-label="Changer de liste"><span id="switcher-name" class="name"></span><span class="chev" aria-hidden="true"></span></button>
-    <input id="title" class="title" maxlength="{{.MaxListName}}" aria-label="Nom de la liste" autocomplete="off" enterkeyhint="done">
-    <label class="share"><input id="share" type="checkbox"> Partager</label>
+    <button id="switcher" class="switcher" type="button" aria-haspopup="dialog" aria-label="{{t "ui.switchList"}}"><span id="switcher-name" class="name"></span><span class="chev" aria-hidden="true"></span></button>
+    <input id="title" class="title" maxlength="{{.MaxListName}}" aria-label="{{t "ui.listName"}}" autocomplete="off" enterkeyhint="done">
+    <label class="share"><input id="share" type="checkbox"> {{t "ui.share"}}</label>
   </div>
   <p id="owner-note" class="owner-note" hidden></p>
 
   <form id="add" class="add" autocomplete="off">
-    <input id="new-item" type="text" maxlength="{{.MaxItemText}}" placeholder="Ajouter…" aria-label="Ajouter un élément" enterkeyhint="done" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true">
-    <button id="add-btn" type="submit" class="add-btn">Ajouter</button>
+    <input id="new-item" type="text" maxlength="{{.MaxItemText}}" placeholder="{{t "ui.addPlaceholder"}}" aria-label="{{t "ui.addLabel"}}" enterkeyhint="done" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true">
+    <button id="add-btn" type="submit" class="add-btn">{{t "ui.add"}}</button>
   </form>
 
   <ul id="items" class="items"></ul>
 
   <div class="list-foot">
     <div id="checked-tools" class="checked-tools">
-      <button id="uncheck-all" type="button">Tout décocher</button>
-      <button id="clear-checked" type="button">Supprimer les cochés</button>
+      <button id="uncheck-all" type="button">{{t "ui.uncheckAll"}}</button>
+      <button id="clear-checked" type="button">{{t "ui.clearChecked"}}</button>
     </div>
 
     <div id="owner-tools" class="owner-tools">
       <fieldset class="colors">
-        <legend>Couleur</legend>
-        {{range .Colors}}<label class="swatch c-{{.Key}}"><input type="radio" name="color" value="{{.Key}}" aria-label="{{.Label}}"></label>{{end}}
+        <legend>{{t "ui.color"}}</legend>
+        {{range .Colors}}<label class="swatch c-{{.Key}}"><input type="radio" name="color" value="{{.Key}}" aria-label="{{t (print "color." .Key)}}"></label>{{end}}
       </fieldset>
 
-      <button id="delete" type="button" class="danger">Supprimer la liste…</button>
+      <button id="delete" type="button" class="danger">{{t "ui.deleteList"}}</button>
       <div id="confirm-delete" class="confirm" hidden>
         <p id="confirm-text"></p>
-        <button id="delete-yes" type="button" class="danger">Supprimer</button>
-        <button id="delete-no" type="button">Annuler</button>
+        <button id="delete-yes" type="button" class="danger">{{t "ui.delete"}}</button>
+        <button id="delete-no" type="button">{{t "ui.cancel"}}</button>
       </div>
     </div>
   </div>
 </main>
 
 <!-- Téléphone : toutes les listes, dans un panneau qui monte du bas. -->
-<dialog id="sheet" class="sheet" aria-label="Listes">
+<dialog id="sheet" class="sheet" aria-label="{{t "ui.lists"}}">
   <div class="sheet-body">
-    <button id="sheet-grip" class="sheet-grip" type="button" aria-label="Fermer"></button>
+    <button id="sheet-grip" class="sheet-grip" type="button" aria-label="{{t "ui.close"}}"></button>
     <div class="sheet-scroll">
-      <nav id="sheet-lists" class="sheet-lists" aria-label="Listes"></nav>
+      <nav id="sheet-lists" class="sheet-lists" aria-label="{{t "ui.lists"}}"></nav>
       <button id="sheet-up" class="sheet-more up" type="button" hidden></button>
       <button id="sheet-down" class="sheet-more down" type="button" hidden></button>
     </div>
     <div class="sheet-tools">
-      <button id="sheet-new" type="button">+ Nouvelle liste</button>
-      <button id="sheet-rename" type="button">Renommer</button>
+      <button id="sheet-new" type="button">{{t "ui.newList"}}</button>
+      <button id="sheet-rename" type="button">{{t "ui.rename"}}</button>
     </div>
   </div>
 </dialog>
 
-<p id="empty" class="empty" hidden>Aucune liste. Crée la première avec le bouton +.</p>
+<p id="empty" class="empty" hidden>{{t "ui.empty"}}</p>
 
 <footer class="foot">
   <span>{{.Name}}</span>
   <form method="post" action="/logout">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <button type="submit" class="link">Se déconnecter</button>
+    <button type="submit" class="link">{{t "ui.logout"}}</button>
   </form>
 </footer>
 </body>

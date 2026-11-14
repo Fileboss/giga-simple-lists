@@ -225,7 +225,7 @@ func (a *App) apiMoveItem(w http.ResponseWriter, r *http.Request, s *session) {
 		return
 	}
 	if in.Before != "" && !validID(in.Before) {
-		writeErr(w, invalidError("position invalide"))
+		writeErr(w, invalidError("err.position"))
 		return
 	}
 	var moved []itemPosition
@@ -333,7 +333,7 @@ func (a *App) apiRestoreItems(w http.ResponseWriter, r *http.Request, s *session
 func (a *App) apiEvents(w http.ResponseWriter, r *http.Request, s *session) {
 	sub := a.hub.subscribe(s.UserID, s.Hash)
 	if sub == nil {
-		writeJSON(w, http.StatusTooManyRequests, apiError{"Trop de connexions ouvertes."})
+		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyStreams")})
 		return
 	}
 	defer a.hub.unsubscribe(sub)

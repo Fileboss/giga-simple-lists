@@ -255,15 +255,20 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 // Aucun script ni style inline (la CSP les bloquerait), pas d'alert()/confirm(), pas d'innerHTML.
+// Seule exception : un bloc de données JSON (type="application/json"), jamais exécuté.
 func TestNoInlineCode(t *testing.T) {
-	inlineScript := regexp.MustCompile(`<script(?:\s[^>]*)?>\s*[^<\s]`)
+	scripts := regexp.MustCompile(`<script(\s[^>]*)?>\s*[^<\s]`)
 	fs.WalkDir(templatesFS, ".", func(p string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
 			return nil
 		}
 		b, _ := templatesFS.ReadFile(p)
 		s := string(b)
-		if inlineScript.MatchString(s) || strings.Contains(s, "<style") || strings.Contains(s, "style=") ||
+		inlineScript := false
+		for _, m := range scripts.FindAllStringSubmatch(s, -1) {
+			inlineScript = inlineScript || !strings.Contains(m[1], `type="application/json"`)
+		}
+		if inlineScript || strings.Contains(s, "<style") || strings.Contains(s, "style=") ||
 			regexp.MustCompile(`\son[a-z]+=`).MatchString(s) || strings.Contains(s, "javascript:") {
 			t.Errorf("%s : code inline", p)
 		}
@@ -304,6 +309,7 @@ func TestColorContrast(t *testing.T) {
 	if len(colors) != 8 {
 		t.Fatalf("%d couleurs", len(colors))
 	}
+	dark := string(css[strings.Index(string(css), "@media (prefers-color-scheme: dark)"):])
 	for _, c := range colors {
 		for _, bg := range []string{c.Hex, c.Deep} {
 			if r := contrast("#000000", bg); r < 7 {
@@ -316,13 +322,28 @@ func TestColorContrast(t *testing.T) {
 				t.Errorf("%s %s : gris des cochés %.2f:1", c.Key, bg, r)
 			}
 		}
+		for _, bg := range []string{c.DarkHex, c.DarkDeep} {
+			if r := contrast(darkInkColor, bg); r < 7 {
+				t.Errorf("%s %s (sombre) : texte %.2f:1", c.Key, bg, r)
+			}
+			if r := contrast(darkCheckedGray, bg); r < 4.5 {
+				t.Errorf("%s %s (sombre) : gris des cochés %.2f:1", c.Key, bg, r)
+			}
+		}
 		rule := fmt.Sprintf(".c-%s { background-color: %s; --tint: %s; --deep: %s; }", c.Key, c.Hex, c.Hex, c.Deep)
 		if !strings.Contains(string(css), rule) {
 			t.Errorf("app.css : règle %q absente", rule)
 		}
+		rule = fmt.Sprintf(".c-%s { background-color: %s; --tint: %s; --deep: %s; }", c.Key, c.DarkHex, c.DarkHex, c.DarkDeep)
+		if !strings.Contains(dark, rule) {
+			t.Errorf("app.css, mode sombre : règle %q absente", rule)
+		}
 	}
 	if !strings.Contains(string(css), "--ink: "+inkColor+";") || !strings.Contains(string(css), "--muted: "+checkedGray+";") {
 		t.Error("app.css : --ink ou --muted différent de colors.go")
+	}
+	if !strings.Contains(dark, "--ink: "+darkInkColor+";") || !strings.Contains(dark, "--muted: "+darkCheckedGray+";") {
+		t.Error("app.css, mode sombre : --ink ou --muted différent de colors.go")
 	}
 }
 
@@ -452,7 +473,7 @@ func TestDatabaseSizeLimit(t *testing.T) {
 			}
 		}
 	}
-	if !full || last.Code != http.StatusInsufficientStorage || !strings.Contains(last.Body.String(), "Stockage plein") {
+	if !full || last.Code != http.StatusInsufficientStorage || !strings.Contains(last.Body.String(), "Storage full") {
 		t.Fatalf("limite non atteinte ou mauvaise réponse : %d %s", last.Code, last.Body.String())
 	}
 	// Lecture : toujours possible.
