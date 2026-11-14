@@ -1,55 +1,66 @@
 {{template "head" .}}
-<main class="page-box">
-  {{template "back" .}}
-  <h1>{{t "account.title"}}</h1>
-  <p class="muted">{{tf "account.signedInAs" .Name}}</p>
-  {{template "notices" .}}
+<div class="settings">
+  {{template "nav" .}}
+  <main class="settings-main">
+    <header class="profile">
+      <span class="avatar avatar-lg" aria-hidden="true">{{initial .Name}}</span>
+      <div>
+        <h1>{{.Name}}</h1>
+        <p class="muted">{{if .IsAdmin}}{{t "account.roleAdmin"}}{{else}}{{t "account.roleMember"}}{{end}}</p>
+      </div>
+    </header>
+    {{template "notices" .}}
 
-  <section>
-    <h2>{{t "account.password"}}</h2>
-    <form method="post" action="/account/password" class="fields">
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <input type="text" name="name" value="{{.Name}}" autocomplete="username" hidden>
-      <label>{{t "account.currentPassword"}}
-        <input name="current" type="password" autocomplete="current-password" required maxlength="1024">
-      </label>
-      <label>{{t "account.newPassword"}}
-        <input name="password" type="password" autocomplete="new-password" required minlength="{{.MinPassword}}" maxlength="1024">
-        <small>{{tf "account.passwordRule" .MinPassword}}</small>
-      </label>
-      <label>{{t "account.confirmPassword"}}
-        <input name="confirm" type="password" autocomplete="new-password" required minlength="{{.MinPassword}}" maxlength="1024">
-      </label>
-      <div><button type="submit" class="primary">{{t "account.changePassword"}}</button></div>
-      <p class="muted">{{t "account.passwordNote"}}</p>
-    </form>
-  </section>
-
-  <section>
-    <h2>{{t "account.devices"}}</h2>
-    <ul class="rows">
-      {{range .Sessions}}
-      <li>
-        <div class="row-main">
-          <span>{{device .UserAgent}}</span>
-          <small>{{if .Current}}{{t "account.thisDevice"}}{{else}}{{tf "account.lastActive" (ago .LastSeen)}}{{end}} · {{tf "account.since" (day .Created)}}</small>
+    <section>
+      {{template "section-head" (list (t "account.password") (t "account.passwordNote"))}}
+      <form method="post" action="/account/password" class="card card-form">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="text" name="name" value="{{.Name}}" autocomplete="username" hidden>
+        <div class="fields">
+          <label>{{t "account.currentPassword"}}
+            <input name="current" type="password" autocomplete="current-password" required maxlength="1024">
+          </label>
+          <div class="field-pair">
+            <label>{{t "account.newPassword"}}
+              <input name="password" type="password" autocomplete="new-password" required minlength="{{.MinPassword}}" maxlength="1024">
+              <small>{{tf "account.passwordRule" .MinPassword}}</small>
+            </label>
+            <label>{{t "account.confirmPassword"}}
+              <input name="confirm" type="password" autocomplete="new-password" required minlength="{{.MinPassword}}" maxlength="1024">
+            </label>
+          </div>
         </div>
-        {{if not .Current}}
-        <form method="post" action="/account/sessions/{{.ID}}/revoke">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}">
-          <button type="submit">{{t "account.signOutDevice"}}</button>
-        </form>
+        <div class="card-foot"><button type="submit" class="primary">{{t "account.changePassword"}}</button></div>
+      </form>
+    </section>
+
+    <section>
+      {{template "section-head" (list (t "account.devices") (t "account.devicesHelp"))}}
+      <ul class="card rows">
+        {{range .Sessions}}
+        <li>
+          <span class="row-icon">{{if eq (deviceKind .UserAgent) "phone"}}{{template "icon-phone"}}{{else}}{{template "icon-computer"}}{{end}}</span>
+          <div class="row-main">
+            <span>{{device .UserAgent}}{{if .Current}} <span class="badge badge-accent">{{t "account.thisDevice"}}</span>{{end}}</span>
+            <small>{{if .Current}}{{tf "account.since" (day .Created)}}{{else}}{{tf "account.lastActive" (ago .LastSeen)}} · {{tf "account.since" (day .Created)}}{{end}}</small>
+          </div>
+          {{if not .Current}}
+          <form method="post" action="/account/sessions/{{.ID}}/revoke">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="small">{{t "account.signOutDevice"}}</button>
+          </form>
+          {{end}}
+        </li>
         {{end}}
-      </li>
+      </ul>
+      {{if gt (len .Sessions) 1}}
+      <form method="post" action="/account/sessions/revoke-others" class="below-card">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="text-danger">{{t "account.signOutOthers"}}</button>
+      </form>
       {{end}}
-    </ul>
-    {{if gt (len .Sessions) 1}}
-    <form method="post" action="/account/sessions/revoke-others">
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button type="submit">{{t "account.signOutOthers"}}</button>
-    </form>
-    {{end}}
-  </section>
-</main>
+    </section>
+  </main>
+</div>
 </body>
 </html>

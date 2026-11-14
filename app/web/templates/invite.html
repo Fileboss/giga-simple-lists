@@ -1,5 +1,7 @@
 {{template "head" .}}
 <main class="page-box narrow">
+  <p class="brand"><img src="/static/icon.svg" alt="" width="40" height="40"> {{t "app.name"}}</p>
+  <div class="card card-form">
   <h1>{{.Title}}</h1>
   {{template "notices" .}}
   {{with .Invite}}
@@ -21,11 +23,12 @@
     <label>{{t "account.confirmPassword"}}
       <input name="confirm" type="password" autocomplete="new-password" required minlength="{{$.MinPassword}}" maxlength="1024">
     </label>
-    <div><button type="submit" class="primary">{{if eq .Kind "reset"}}{{t "reset.submit"}}{{else}}{{t "invite.submit"}}{{end}}</button></div>
+    <div><button type="submit" class="primary wide">{{if eq .Kind "reset"}}{{t "reset.submit"}}{{else}}{{t "invite.submit"}}{{end}}</button></div>
   </form>
   {{else}}
   <p><a class="link" href="/login">{{t "login.submit"}}</a></p>
   {{end}}
+  </div>
 </main>
 </body>
 </html>
