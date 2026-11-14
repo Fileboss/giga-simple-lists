@@ -20,5 +20,11 @@
   Without it, such an origin now stops the app at startup with an explanation instead of a sign-in
   that silently fails.
 - Signing in from an address other than `LISTES_ORIGIN` now says so, instead of "page expired".
-- English README (French version in `README.fr.md`), with a hardened `compose.yaml` example and a
-  non-goals section.
+- English README and SECURITY (French versions in `README.fr.md` and `SECURITY.fr.md`), with a
+  hardened `compose.yaml` example, a non-goals section, English screenshots and a real-time demo GIF.
+
+### Changed
+
+- The app is named giga-simple-lists everywhere it shows a name (page titles, home-screen name,
+  logs), like the repository. Technical names are unchanged so existing deployments keep working:
+  binary `listes`, `LISTES_*` variables, `/data/listes.db`, cookies.
