@@ -399,6 +399,13 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 		}
 		l.Shared = *p.Shared
 	}
+	// « Tout le monde » n'a pas de membres, et un client qui ne connaît que « shared »
+	// (version précédente encore ouverte, file hors ligne) veut dire tout le monde ou
+	// personne : dans les deux cas, les membres sont retirés.
+	if p.Shared != nil && (*p.Shared || p.Members == nil) {
+		none := []string{}
+		p.Members = &none
+	}
 	if p.Members != nil {
 		if err := requireOwner(before, userID); err != nil {
 			return nil, nil, err
@@ -433,13 +440,10 @@ func setMembers(tx querier, l *List, ids []string) ([]member, error) {
 		if !validID(id) {
 			return nil, invalidError("err.member")
 		}
-		res, err := tx.Exec(`INSERT INTO list_members (list_id, user_id) SELECT ?, id FROM users WHERE id = ?`, l.ID, id)
-		n, err := rowsAffected(res, err)
-		if err != nil {
+		// Compte supprimé entre-temps (fenêtre de partage ouverte, annulation d'une
+		// suppression de liste) : ignoré plutôt que refusé.
+		if _, err := tx.Exec(`INSERT INTO list_members (list_id, user_id) SELECT ?, id FROM users WHERE id = ?`, l.ID, id); err != nil {
 			return nil, err
-		}
-		if n != 1 {
-			return nil, invalidError("err.member")
 		}
 	}
 	cp := List{ID: l.ID, Members: []member{}}

@@ -114,6 +114,8 @@ old browsers and configuration mistakes.
 - **128-bit** identifiers, impossible to guess.
 - When sharing changes, each account is evaluated before and after: whoever gains access receives
   the list, whoever loses it receives a bare removal, with no content.
+- Any signed-in account can list the other accounts' names (to pick who to share with). On an
+  instance, everyone knows who else uses it; these names are also sign-in names.
 
 ### Check-only public link
 

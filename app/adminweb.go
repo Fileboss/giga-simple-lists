@@ -168,14 +168,19 @@ func (a *App) adminDelete(w http.ResponseWriter, r *http.Request, s *session) {
 	}
 	var sessions [][]byte
 	err := a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
-		shared, hashes, err := deleteUser(tx, u.ID)
+		shared, memberOf, hashes, err := deleteUser(tx, u.ID)
 		if err != nil {
 			return nil, err
 		}
 		sessions = hashes
-		evs := make([]event, 0, len(shared))
+		evs := make([]event, 0, len(shared)+len(memberOf))
 		for _, l := range shared {
 			evs = append(evs, newEvent(evListRemoved, removal{ID: l.ID, Reason: reasonDeleted}, toViewersOf(l)))
+		}
+		for _, l := range memberOf { // membres à jour chez ceux qui la voient encore
+			meta := *l
+			meta.Items = nil
+			evs = append(evs, newEvent(evList, meta, toViewersOf(l)))
 		}
 		return evs, nil
 	})

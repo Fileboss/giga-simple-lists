@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,11 @@ func TestShareWithMembers(t *testing.T) {
 	h.expect(http.StatusNotFound, carol, "PATCH", "/api/items/"+it.ID, map[string]any{"checked": true})
 	h.expect(http.StatusForbidden, bob, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{}})
 	h.expect(http.StatusForbidden, bob, "POST", "/api/lists/"+l.ID+"/public-link", nil)
-	h.expect(http.StatusBadRequest, alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{newID()}})
+	// Compte inconnu (supprimé entre-temps) : ignoré ; identifiant mal formé : refusé.
+	h.mustDo(alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{bobUser.ID, newID()}}, &after)
+	if len(after.Members) != 1 || after.Members[0].ID != bobUser.ID {
+		t.Fatalf("compte inconnu : %+v", after.Members)
+	}
 	h.expect(http.StatusBadRequest, alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{"pas-un-id"}})
 
 	// Les autres comptes, pour le panneau de partage : sans soi-même.
@@ -225,8 +230,6 @@ func TestPublicLimits(t *testing.T) {
 	it := h.createItem(alice, l.ID, "lait")
 	token := h.publicLink(alice, l.ID)
 	freezeTime(t)
-	publicWrites = rateLimiter{counts: map[string]int{}}
-	t.Cleanup(func() { publicWrites = rateLimiter{counts: map[string]int{}} })
 	for i := 0; i < publicWritesPerMinute; i++ {
 		if c := h.anon("POST", "/s/"+token+"/items/"+it.ID, map[string]any{"checked": i%2 == 0}).Code; c != http.StatusOK {
 			t.Fatalf("écriture %d : %d", i, c)
@@ -306,5 +309,47 @@ func TestRateLimiterFull(t *testing.T) {
 	rl.allow("0", 2)
 	if rl.allow("0", 2) {
 		t.Fatal("limite remise à zéro")
+	}
+}
+
+// « shared » seul (client de la version précédente, file hors ligne) ou « tout le monde » :
+// plus de membres, la liste est bien privée ou bien partagée avec tous.
+func TestSharedClearsMembers(t *testing.T) {
+	h := newHarness(t)
+	alice := h.session(h.addUser("alice"))
+	bobUser := h.addUser("bob")
+	bob := h.session(bobUser)
+	l := h.createList(alice, "Courses")
+	h.expect(http.StatusOK, alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{bobUser.ID}})
+	var after List
+	h.mustDo(alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"shared": false}, &after)
+	if len(after.Members) != 0 || hasList(h.state(bob), l.ID) {
+		t.Fatalf("shared:false seul : membres %+v", after.Members)
+	}
+	h.expect(http.StatusOK, alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{bobUser.ID}})
+	h.mustDo(alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"shared": true, "members": []string{bobUser.ID}}, &after)
+	if len(after.Members) != 0 || !after.Shared {
+		t.Fatalf("shared:true : membres %+v", after.Members)
+	}
+}
+
+// Compte membre supprimé : les autres lecteurs de la liste reçoivent les membres à jour.
+func TestDeletedMemberEvent(t *testing.T) {
+	h := newHarness(t)
+	admin := h.session(h.addUser("alice"))
+	bobUser, carolUser := h.addUser("bob"), h.addUser("carol")
+	l := h.createList(admin, "Courses")
+	h.expect(http.StatusOK, admin, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{bobUser.ID, carolUser.ID}})
+	srv := httptest.NewServer(h.app.routes())
+	t.Cleanup(srv.Close)
+	evC := openSSE(t, srv.URL, h.session(carolUser))
+	if w := h.form(admin, "/admin/users/"+bobUser.ID+"/delete", url.Values{}); w.Code != http.StatusSeeOther {
+		t.Fatalf("suppression : %d", w.Code)
+	}
+	ev := evC.next(t, 2*time.Second)
+	var got List
+	json.Unmarshal([]byte(ev.Data), &got)
+	if ev.Name != evList || got.ID != l.ID || len(got.Members) != 1 || got.Members[0].ID != carolUser.ID {
+		t.Fatalf("carol : %s %s", ev.Name, ev.Data)
 	}
 }

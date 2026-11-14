@@ -255,50 +255,76 @@ func setAdmin(tx *sql.Tx, userID string, admin bool) error {
 
 // deleteUser supprime le compte, ses listes (et leurs éléments) et ses sessions. Renvoie
 // les listes partagées supprimées (à retirer chez les autres) et les sessions coupées.
-func deleteUser(tx *sql.Tx, userID string) (shared []*List, sessions [][]byte, err error) {
+//
+// memberOf : les listes des autres dont le compte était membre, rechargées après la
+// suppression (sans lui), pour que leurs autres lecteurs voient la liste des membres à jour.
+func deleteUser(tx *sql.Tx, userID string) (shared, memberOf []*List, sessions [][]byte, err error) {
 	a, err := accountByID(tx, userID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if a.IsAdmin {
 		n, err := otherAdmins(tx, userID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if n == 0 {
-			return nil, nil, errLastAdmin
+			return nil, nil, nil, errLastAdmin
 		}
 	}
 	rows, err := tx.Query(listSelect+` WHERE l.owner_id = ?`, userID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var owned []*List
 	for rows.Next() {
 		l, err := scanList(rows)
 		if err != nil {
 			rows.Close()
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		owned = append(owned, l)
 	}
 	rows.Close()
 	for _, l := range owned {
 		if err := attachMembers(tx, l); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if l.isShared() || l.Public {
 			shared = append(shared, l)
 		}
 	}
 	if sessions, err = sessionHashes(tx, userID, nil); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	var ids []string
+	rows, err = tx.Query(`SELECT list_id FROM list_members WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, nil, nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
 	if _, err := tx.Exec(`DELETE FROM users WHERE id = ?`, userID); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	_, err = tx.Exec(`DELETE FROM login_attempts WHERE key = ?`, userKey(a.Name))
-	return shared, sessions, err
+	if _, err := tx.Exec(`DELETE FROM login_attempts WHERE key = ?`, userKey(a.Name)); err != nil {
+		return nil, nil, nil, err
+	}
+	for _, id := range ids {
+		l, err := loadList(tx, id)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		memberOf = append(memberOf, l)
+	}
+	return shared, memberOf, sessions, nil
 }
 
 // setPassword : nouveau mot de passe (déjà haché, hors du verrou d'écriture) ; toutes les sessions du compte sont révoquées sauf

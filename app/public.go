@@ -184,8 +184,6 @@ const (
 	maxRateKeys           = 10000
 )
 
-var publicWrites = rateLimiter{counts: map[string]int{}}
-
 // publicCheck : {"checked": true|false} sur un élément (pas une catégorie) de la liste du
 // lien. Pas de session, donc pas de jeton CSRF : l'Origin et Sec-Fetch-Site sont exigés,
 // le corps JSON impose une requête préalable CORS hors du site, et le jeton du lien,
@@ -196,7 +194,7 @@ func (a *App) publicCheck(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
 		return
 	}
-	if !publicWrites.allow(ipBucket(clientIP(r, a.cfg.TrustedProxies)), publicWritesPerMinute) {
+	if !a.publicWrites.allow(ipBucket(clientIP(r, a.cfg.TrustedProxies)), publicWritesPerMinute) {
 		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyRequests")})
 		return
 	}
