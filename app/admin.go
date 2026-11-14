@@ -140,6 +140,8 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 func backup(out io.Writer, db *sql.DB, dbPath, dest string) error {
 	if dest == "" {
 		dest = filepath.Join(filepath.Dir(dbPath), "listes-backup-"+now().Format("20060102-150405")+".db")
+	} else if !filepath.IsAbs(dest) {
+		dest = filepath.Join(filepath.Dir(dbPath), dest) // / est en lecture seule dans l'image
 	}
 	if _, err := os.Stat(dest); err == nil {
 		return fmt.Errorf(T("cli.backupExists"), dest)

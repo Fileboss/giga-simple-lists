@@ -88,6 +88,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
+          # :latest suit main seulement, jamais un tag (un correctif v1.x après la v2 la ramènerait).
+          flavor: latest=false
           tags: |
             type=semver,pattern=v{{version}}
             type=semver,pattern={{version}}

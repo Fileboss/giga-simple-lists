@@ -23,7 +23,7 @@
   const DEFAULT_LIST_NAME = document.body.dataset.defaultListName;
   const COLORS = [...document.querySelectorAll('input[name="color"]')].map((i) => i.value);
   // Messages dans la langue de l'instance (LISTES_LANG, i18n.go) ; {nom} est remplacé par vars.nom.
-  const MESSAGES = JSON.parse($('messages').textContent);
+  const MESSAGES = JSON.parse($('messages')?.textContent || '{}');
   const t = (key, vars = {}) => (MESSAGES[key] || key).replace(/\{(\w+)\}/g, (_, k) => vars[k]);
 
   let lists = [];          // [{id, owner_id, owner_name, name, color, shared, position, items: [...]}]

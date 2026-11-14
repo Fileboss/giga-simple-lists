@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -96,7 +97,7 @@ func run(args []string) error {
 		defer db.Close()
 		return adminCommand(os.Stdout, os.Stdin, db, args)
 	case "backup":
-		db, err := openDB(cfg.DBPath)
+		db, err := openBackupSource(cfg.DBPath)
 		if err != nil {
 			return err
 		}
@@ -119,7 +120,7 @@ func checkOrigin(cfg config) error {
 		if cfg.InsecureHTTP {
 			return errors.New(T("err.insecureHTTPS"))
 		}
-	case strings.HasPrefix(cfg.Origin, "http://localhost"):
+	case isLocalhost(cfg.Origin):
 	case strings.HasPrefix(cfg.Origin, "http://") && len(cfg.Origin) > len("http://"):
 		if !cfg.InsecureHTTP {
 			return fmt.Errorf(T("err.originHTTP"), cfg.Origin)
@@ -192,4 +193,10 @@ func healthcheck(cfg config) error {
 		return fmt.Errorf("healthz : %s", resp.Status)
 	}
 	return nil
+}
+
+// isLocalhost : http://localhost, avec ou sans port (pas http://localhost.lan).
+func isLocalhost(origin string) bool {
+	u, err := url.Parse(origin)
+	return err == nil && u.Scheme == "http" && u.Hostname() == "localhost"
 }

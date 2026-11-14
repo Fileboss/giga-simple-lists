@@ -54,7 +54,7 @@ func jsMessages() map[string]string {
 // « js.* », {nom} est remplacé par app.js.
 var messages = map[string]map[string]string{
 	"en": {
-		"app.name":        "giga-simple-lists",
+		"app.name":        "Listes",
 		"app.description": "Shared checklists",
 		"list.default":    "New list",
 
@@ -67,14 +67,14 @@ var messages = map[string]map[string]string{
 		"color.sauge":   "Sage",
 		"color.gris":    "Grey",
 
-		"page.login":     "giga-simple-lists · sign in",
+		"page.login":     "Listes · sign in",
 		"login.name":     "Name",
 		"login.password": "Password",
 		"login.submit":   "Sign in",
 		"login.failed":   "Incorrect name or password.",
 		"login.expired":  "This page has expired, please try again.",
-		"login.wrongOrigin": "This server only accepts sign-ins at %s. Open the app at that address, " +
-			"or set LISTES_ORIGIN to the address you are using.",
+		"login.wrongOrigin": "This page was opened at an address other than the one configured in LISTES_ORIGIN. " +
+			"Open the app at its usual address, or set LISTES_ORIGIN to the address you are using (see the logs).",
 
 		"ui.prevLists":      "Previous lists",
 		"ui.lists":          "Lists",
@@ -175,7 +175,7 @@ var messages = map[string]map[string]string{
   listes user reset <name> [--password-stdin]   new password, sessions revoked
   listes user list                              list accounts
   listes sessions revoke-all                    sign out every device of every account
-  listes backup [<file>]                        consistent copy of the database (default: next to it)`,
+  listes backup [<file>]                        consistent copy of the database, next to it unless the path is absolute`,
 		"cli.unknownCommand": "unknown command %q (serve, user, sessions, backup, healthcheck)",
 		"cli.nameLength":     "invalid name: 1 to %d characters",
 		"cli.nameChars":      "invalid name: letters, digits, - _ . only",
@@ -189,13 +189,15 @@ var messages = map[string]map[string]string{
 		"cli.revoked":        "%d session(s) revoked. Open real-time streams close within 20 s.\n",
 		"cli.backupDone":     "Backup written to %s (%d bytes).\n",
 		"cli.backupExists":   "%s already exists: choose another file",
+		"cli.backupNoDB":     "no database at %s: check LISTES_DB",
 		"err.origin":         "LISTES_ORIGIN must be the public URL of the app, for example https://lists.example.com (or http://localhost:5240 locally)",
+		"err.foreignKeys":    "SQLite foreign keys are off",
 		"err.originHTTP":     "LISTES_ORIGIN is %s: over plain HTTP, browsers drop secure session cookies and sign-in fails. Serve the app over HTTPS behind a reverse proxy, or, on a trusted local network only, set LISTES_INSECURE_HTTP=true",
 		"err.insecureHTTPS":  "LISTES_INSECURE_HTTP only applies to an http:// LISTES_ORIGIN: remove it (cookies would lose their Secure flag)",
 		"log.insecureHTTP":   "LISTES_INSECURE_HTTP: session cookies are sent over plain HTTP, use on a trusted local network only",
 	},
 	"fr": {
-		"app.name":        "giga-simple-lists",
+		"app.name":        "Listes",
 		"app.description": "Listes à cocher partagées",
 		"list.default":    "Nouvelle liste",
 
@@ -208,14 +210,14 @@ var messages = map[string]map[string]string{
 		"color.sauge":   "Sauge",
 		"color.gris":    "Gris",
 
-		"page.login":     "giga-simple-lists · connexion",
+		"page.login":     "Listes · connexion",
 		"login.name":     "Nom",
 		"login.password": "Mot de passe",
 		"login.submit":   "Se connecter",
 		"login.failed":   "Identifiant ou mot de passe incorrect.",
 		"login.expired":  "Page expirée, veuillez réessayer.",
-		"login.wrongOrigin": "Ce serveur n’accepte les connexions qu’à l’adresse %s. Ouvrez l’appli à cette adresse, " +
-			"ou réglez LISTES_ORIGIN sur l’adresse utilisée.",
+		"login.wrongOrigin": "Cette page a été ouverte à une autre adresse que celle de LISTES_ORIGIN. " +
+			"Ouvrez l’appli à son adresse habituelle, ou réglez LISTES_ORIGIN sur l’adresse utilisée (voir les journaux).",
 
 		"ui.prevLists":      "Listes précédentes",
 		"ui.lists":          "Listes",
@@ -316,7 +318,7 @@ var messages = map[string]map[string]string{
   listes user reset <nom> [--password-stdin]   nouveau mot de passe, sessions révoquées
   listes user list                             liste les comptes
   listes sessions revoke-all                   déconnecte tous les appareils de tous les comptes
-  listes backup [<fichier>]                    copie cohérente de la base (par défaut : à côté d'elle)`,
+  listes backup [<fichier>]                    copie cohérente de la base, à côté d'elle sauf chemin absolu`,
 		"cli.unknownCommand": "commande inconnue %q (serve, user, sessions, backup, healthcheck)",
 		"cli.nameLength":     "nom invalide : 1 à %d caractères",
 		"cli.nameChars":      "nom invalide : lettres, chiffres, - _ . seulement",
@@ -330,7 +332,9 @@ var messages = map[string]map[string]string{
 		"cli.revoked":        "%d session(s) révoquée(s). Les flux temps réel ouverts se coupent sous 20 s.\n",
 		"cli.backupDone":     "Sauvegarde écrite dans %s (%d octets).\n",
 		"cli.backupExists":   "%s existe déjà : choisis un autre fichier",
+		"cli.backupNoDB":     "pas de base à %s : vérifie LISTES_DB",
 		"err.origin":         "LISTES_ORIGIN doit être l'URL publique de l'appli, par exemple https://listes.example.com (ou http://localhost:5240 en local)",
+		"err.foreignKeys":    "clés étrangères SQLite inactives",
 		"err.originHTTP":     "LISTES_ORIGIN vaut %s : en HTTP simple, les navigateurs refusent les cookies de session sécurisés et la connexion échoue. Sers l'appli en HTTPS derrière un reverse proxy, ou, sur un réseau local de confiance uniquement, ajoute LISTES_INSECURE_HTTP=true",
 		"err.insecureHTTPS":  "LISTES_INSECURE_HTTP ne s'applique qu'à une LISTES_ORIGIN en http:// : retire-la (les cookies perdraient leur attribut Secure)",
 		"log.insecureHTTP":   "LISTES_INSECURE_HTTP : les cookies de session circulent en HTTP simple, à réserver à un réseau local de confiance",

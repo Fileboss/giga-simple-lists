@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,6 +27,7 @@ func TestCheckOrigin(t *testing.T) {
 		{"http://192.168.1.10:5240", false, false}, // la connexion échouerait : on refuse de démarrer
 		{"http://192.168.1.10:5240", true, true},
 		{"http://lists.lan", true, true},
+		{"http://localhost.lan:5240", false, false}, // pas localhost : l'option est nécessaire
 		{"", false, false},
 		{"", true, false},
 		{"http://", true, false},
@@ -114,7 +117,8 @@ func TestInsecureHTTPLogin(t *testing.T) {
 }
 
 // Formulaire envoyé depuis une autre adresse que LISTES_ORIGIN (http://<ip>:5240 au lieu
-// de l'URL publique) : le message le dit, au lieu de « page expirée ».
+// de l'URL publique) : le message le dit, au lieu de « page expirée », sans donner
+// l'adresse configurée au visiteur.
 func TestLoginWrongOriginMessage(t *testing.T) {
 	useLang(t, "en")
 	h := newHarness(t)
@@ -124,7 +128,7 @@ func TestLoginWrongOriginMessage(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "http://192.168.1.10:5240")
 	w := h.serve(req)
-	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), testOrigin) {
+	if body := w.Body.String(); w.Code != http.StatusForbidden || !strings.Contains(body, "LISTES_ORIGIN") || strings.Contains(body, testOrigin) {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	// Bonne origine, jeton expiré : message habituel.
@@ -170,5 +174,46 @@ func TestBackup(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(dest); string(b) != "à garder" {
 		t.Fatal("fichier existant modifié")
+	}
+	// Chemin relatif : à côté de la base (/ est en lecture seule dans l'image).
+	if err := backup(&out, h.db, dbPath, "jour.db"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, "jour.db")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// La source d'une sauvegarde est ouverte telle quelle : jamais créée, jamais migrée.
+func TestBackupSource(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "absente.db")
+	if _, err := openBackupSource(missing); err == nil {
+		t.Fatal("base absente acceptée")
+	}
+	if _, err := os.Stat(missing); err == nil {
+		t.Fatal("base vide créée")
+	}
+
+	old := filepath.Join(dir, "ancienne.db")
+	db, err := sql.Open("sqlite", "file:"+old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE t (x); PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	src, err := openBackupSource(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	if err := backup(io.Discard, src, old, ""); err != nil {
+		t.Fatal(err)
+	}
+	var v int
+	if err := src.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != 1 {
+		t.Fatalf("version %d %v : base migrée", v, err)
 	}
 }
