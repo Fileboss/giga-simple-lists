@@ -16,4 +16,19 @@
 
 {{define "notices"}}{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}{{end}}
 
-{{define "back"}}<nav class="page-nav"><a class="link" href="/">← {{t "page.backToLists"}}</a>{{if .IsAdmin}}<a class="link" href="/admin">{{t "ui.admin"}}</a>{{end}}<a class="link" href="/account">{{t "account.title"}}</a></nav>{{end}}
+{{/* Navigation des pages de réglages : colonne à gauche sur grand écran, onglets au-dessus sur téléphone. */}}
+{{define "nav"}}
+<nav class="settings-nav" aria-label="{{t "settings.nav"}}">
+  <a class="back" href="/">← {{t "page.backToLists"}}</a>
+  <a href="/account"{{if eq .Title (t "account.title")}} aria-current="page"{{end}}>{{t "account.title"}}</a>
+  {{if .IsAdmin}}<a href="/admin"{{if eq .Title (t "admin.title")}} aria-current="page"{{end}}>{{t "ui.admin"}}</a>{{end}}
+</nav>
+{{end}}
+
+{{/* Section de réglages : titre et explication au-dessus, contenu dans une carte. */}}
+{{define "section-head"}}<div class="section-head"><h2>{{index . 0}}</h2>{{if index . 1}}<p>{{index . 1}}</p>{{end}}</div>{{end}}
+
+{{define "icon-phone"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/></svg>{{end}}
+{{define "icon-computer"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2.5 19h19"/></svg>{{end}}
+{{define "icon-link"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>{{end}}
+{{define "icon-key"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2"/></svg>{{end}}

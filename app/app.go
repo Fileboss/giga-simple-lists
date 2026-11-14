@@ -79,13 +79,16 @@ func newApp(cfg config, db *sql.DB) *App {
 
 // templateFuncs : t "clé" donne le message dans la langue de l'instance (i18n.go).
 var templateFuncs = template.FuncMap{
-	"t":      T,
-	"tf":     tf,
-	"lang":   func() string { return lang },
-	"device": deviceName,
-	"ago":    ago,
-	"day":    day,
-	"until":  until,
+	"t":          T,
+	"tf":         tf,
+	"lang":       func() string { return lang },
+	"device":     deviceName,
+	"ago":        ago,
+	"day":        day,
+	"until":      until,
+	"initial":    initial,
+	"deviceKind": deviceKind,
+	"list":       func(v ...any) []any { return v },
 }
 
 // localizeManifest : nom, description et langue du manifeste dans la langue de l'instance.

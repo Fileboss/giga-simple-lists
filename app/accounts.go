@@ -448,6 +448,24 @@ func deviceName(ua string) string {
 	return T("device.unknown")
 }
 
+// initial : première lettre du nom, en capitale, pour l'avatar.
+func initial(name string) string {
+	for _, r := range name {
+		return strings.ToUpper(string(r))
+	}
+	return "?"
+}
+
+// deviceKind : « phone » ou « computer », pour l'icône d'une session.
+func deviceKind(ua string) string {
+	for _, s := range []string{"iPhone", "Android", "Mobile"} {
+		if strings.Contains(ua, s) {
+			return "phone"
+		}
+	}
+	return "computer"
+}
+
 // ago : « 5 min ago », « 3 days ago »… au-delà d'un mois, la date.
 func ago(ms int64) string {
 	d := time.Duration(nowMs()-ms) * time.Millisecond
