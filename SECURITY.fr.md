@@ -145,6 +145,10 @@ couvrent les navigateurs anciens et les erreurs de configuration.
   sans lui, tous les visiteurs partagent l'IP du proxy.
 - `Referrer-Policy: same-origin` et `X-Robots-Tag: noindex` : le jeton ne sort pas du site et la
   page n'est pas indexée.
+- Un lien public ouvert sur un appareil y reste utilisable hors ligne : sa page (les 20 derniers
+  liens) et une copie de la liste sont gardées sur l'appareil, même après la déconnexion d'un
+  compte, puisque le lien n'en dépend pas. Un lien révoqué est oublié à sa prochaine ouverture
+  en ligne.
 ### Navigateur
 
 - **CSP stricte, sans script ni style inline**, aucune ressource externe (ni CDN, ni police).

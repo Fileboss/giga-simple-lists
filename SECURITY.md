@@ -137,6 +137,9 @@ old browsers and configuration mistakes.
   every visitor shares the proxy's IP.
 - `Referrer-Policy: same-origin` and `X-Robots-Tag: noindex`: the token does not leave the site and
   the page is not indexed.
+- A public link opened on a device stays usable offline there: its page (the last 20 links) and a
+  copy of the list are kept on the device, even after signing out of an account, since the link
+  needs no account. A revoked link is forgotten the next time it is opened online.
 ### Browser
 
 - **Strict CSP, no inline script or style**, no external resource (no CDN, no font). Together with

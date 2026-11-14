@@ -410,6 +410,9 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 		if err := requireOwner(before, userID); err != nil {
 			return nil, nil, err
 		}
+		if p.Shared == nil && len(*p.Members) > 0 {
+			l.Shared = false // des comptes précis : plus « tout le monde »
+		}
 		if l.Members, err = setMembers(tx, &l, *p.Members); err != nil {
 			return nil, nil, err
 		}
@@ -423,7 +426,7 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 }
 
 // setMembers remplace les membres de la liste : des comptes existants, sans le
-// propriétaire ni doublon. Un identifiant inconnu est refusé.
+// propriétaire ni doublon. Un identifiant mal formé est refusé, un compte inconnu ignoré.
 func setMembers(tx querier, l *List, ids []string) ([]member, error) {
 	if len(ids) > maxMembers {
 		return nil, errLimit

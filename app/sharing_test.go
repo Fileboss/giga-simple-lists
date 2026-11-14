@@ -331,6 +331,11 @@ func TestSharedClearsMembers(t *testing.T) {
 	if len(after.Members) != 0 || !after.Shared {
 		t.Fatalf("shared:true : membres %+v", after.Members)
 	}
+	// Des membres sans « shared » sur une liste partagée avec tous : des comptes précis.
+	h.mustDo(alice, "PATCH", "/api/lists/"+l.ID, map[string]any{"members": []string{bobUser.ID}}, &after)
+	if after.Shared || len(after.Members) != 1 {
+		t.Fatalf("members seul : shared=%v membres %+v", after.Shared, after.Members)
+	}
 }
 
 // Compte membre supprimé : les autres lecteurs de la liste reçoivent les membres à jour.

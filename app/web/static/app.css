@@ -663,6 +663,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .public-box { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .public-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .public-tools button { font-size: 15px; color: var(--muted); }
+.public-tools button.armed { color: var(--danger); border-color: var(--danger); }
 .share-done { display: flex; justify-content: flex-end; }
 .share-done .done { color: var(--paper); background: var(--ink); border-color: var(--ink); }
 @media (max-width: 699px) {

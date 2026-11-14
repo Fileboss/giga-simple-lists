@@ -376,6 +376,7 @@
   }
 
   function onList(l) {
+    if (el.shareDialog.open && l.id === current && isMine(l)) refreshPublicUrl(l);
     const local = byId(l.id);
     if (!local) {
       lists.push({ ...l, items: l.items || [] });
@@ -1221,7 +1222,26 @@
       if (acc) accounts = acc;
       if (link) publicUrl = link.url;
     } catch { /* hors ligne : on garde ce qu'on sait */ }
-    if (currentList() === l) renderShare(l);
+    // La liste a pu être remplacée par un rechargement complet pendant la requête.
+    const now = currentList();
+    if (now && now.id === l.id && el.shareDialog.open) renderShare(now);
+  }
+
+  // Lien remplacé ou coupé depuis un autre appareil, fenêtre ouverte ici : on relit l'URL,
+  // pour ne jamais copier un lien mort.
+  async function refreshPublicUrl(l) {
+    let url = '';
+    if (l.public) {
+      try {
+        const res = await fetch('/api/lists/' + l.id + '/public-link', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        url = (await res.json()).url;
+      } catch { return; }
+    }
+    const now = currentList();
+    if (!now || now.id !== l.id || !el.shareDialog.open || url === publicUrl) return;
+    publicUrl = url;
+    renderShare(now);
   }
 
   function renderShare(l) {
@@ -1318,10 +1338,29 @@
     renderShare(l);
   }
 
+  // L'ancien lien cesse de marcher : un tap par erreur ne doit pas couper celui déjà envoyé.
+  // Premier clic : le bouton demande confirmation (4 s) ; second clic : nouveau lien.
+  let resetArmed = null;
+  const disarmReset = () => {
+    clearTimeout(resetArmed);
+    resetArmed = null;
+    el.publicReset.textContent = el.publicReset.dataset.label;
+    el.publicReset.classList.remove('armed');
+  };
+  el.publicReset.dataset.label = el.publicReset.textContent;
   el.publicReset.addEventListener('click', () => {
     const l = currentList();
-    if (l && isMine(l)) setPublicLink(l, true); // l'ancien lien cesse de marcher
+    if (!l || !isMine(l)) return;
+    if (!resetArmed) {
+      el.publicReset.textContent = t('newLinkConfirm');
+      el.publicReset.classList.add('armed');
+      resetArmed = setTimeout(disarmReset, 4000);
+      return;
+    }
+    disarmReset();
+    setPublicLink(l, true);
   });
+  el.shareDialog.addEventListener('close', disarmReset);
   el.publicCopy.addEventListener('click', async () => {
     if (!publicUrl) return;
     if (navigator.share) {
