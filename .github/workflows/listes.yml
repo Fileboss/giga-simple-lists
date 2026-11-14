@@ -1,9 +1,9 @@
-# Teste Listes, puis construit et publie l'image (amd64, arm64, arm/v7) sur ghcr.io/<owner>/giga-simple-lists.
+# Teste giga-simple-lists, puis construit et publie l'image (amd64, arm64, arm/v7) sur ghcr.io/<owner>/giga-simple-lists.
 # - tag vX.Y.Z    → :vX.Y.Z et :X.Y.Z, les versions à épingler pour déployer, et :X.Y et :X
 # - push sur main → :latest et :sha-<commit>, pour le dev seulement
 # - pull request  → tests et build de chaque plateforme (image < 20 Mo), rien n'est publié
 # - chaque nuit   → tests et govulncheck seulement : nouvelles failles dans Go ou les dépendances
-name: Listes
+name: giga-simple-lists
 
 on:
   push:

@@ -1,4 +1,4 @@
-# Listes : image publiée par la CI sur ghcr.io/fileboss/giga-simple-lists (voir README),
+# giga-simple-lists : image publiée par la CI sur ghcr.io/fileboss/giga-simple-lists (voir README),
 # pour linux/amd64, linux/arm64 et linux/arm/v7 (Raspberry Pi).
 # Un binaire Go statique (sans CGO : SQLite via modernc.org/sqlite) dans distroless/static :
 # ni shell ni gestionnaire de paquets. Le healthcheck est une sous-commande du binaire.

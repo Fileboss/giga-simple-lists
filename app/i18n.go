@@ -54,7 +54,7 @@ func jsMessages() map[string]string {
 // « js.* », {nom} est remplacé par app.js.
 var messages = map[string]map[string]string{
 	"en": {
-		"app.name":        "Lists",
+		"app.name":        "giga-simple-lists",
 		"app.description": "Shared checklists",
 		"list.default":    "New list",
 
@@ -67,7 +67,7 @@ var messages = map[string]map[string]string{
 		"color.sauge":   "Sage",
 		"color.gris":    "Grey",
 
-		"page.login":     "Lists · sign in",
+		"page.login":     "giga-simple-lists · sign in",
 		"login.name":     "Name",
 		"login.password": "Password",
 		"login.submit":   "Sign in",
@@ -151,7 +151,7 @@ var messages = map[string]map[string]string{
 		"err.tooManyItems":   "too many items",
 		"err.item":           "invalid item",
 
-		"log.started":             "listes started",
+		"log.started":             "giga-simple-lists started",
 		"log.skipped":             "skipped",
 		"log.loginRefusedCSRF":    "sign-in refused: invalid origin or CSRF token",
 		"log.loginQueueFull":      "sign-in refused: too many slowed-down attempts waiting",
@@ -195,7 +195,7 @@ var messages = map[string]map[string]string{
 		"log.insecureHTTP":   "LISTES_INSECURE_HTTP: session cookies are sent over plain HTTP, use on a trusted local network only",
 	},
 	"fr": {
-		"app.name":        "Listes",
+		"app.name":        "giga-simple-lists",
 		"app.description": "Listes à cocher partagées",
 		"list.default":    "Nouvelle liste",
 
@@ -208,7 +208,7 @@ var messages = map[string]map[string]string{
 		"color.sauge":   "Sauge",
 		"color.gris":    "Gris",
 
-		"page.login":     "Listes · connexion",
+		"page.login":     "giga-simple-lists · connexion",
 		"login.name":     "Nom",
 		"login.password": "Mot de passe",
 		"login.submit":   "Se connecter",
@@ -292,7 +292,7 @@ var messages = map[string]map[string]string{
 		"err.tooManyItems":   "trop d'éléments",
 		"err.item":           "élément invalide",
 
-		"log.started":             "listes démarré",
+		"log.started":             "giga-simple-lists démarré",
 		"log.skipped":             "sautés",
 		"log.loginRefusedCSRF":    "connexion refusée : origine ou jeton CSRF invalide",
 		"log.loginQueueFull":      "connexion refusée : trop de tentatives ralenties en attente",

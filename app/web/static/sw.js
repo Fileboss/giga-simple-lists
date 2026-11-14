@@ -1,4 +1,4 @@
-// Listes : ouverture sans réseau. Le réseau passe toujours en premier (jamais de
+// giga-simple-lists : ouverture sans réseau. Le réseau passe toujours en premier (jamais de
 // version périmée quand il répond) ; le cache ne sert que s'il ne répond pas.
 // L'API et le flux SSE ne passent pas par ici : app.js garde sa propre copie des listes.
 'use strict';

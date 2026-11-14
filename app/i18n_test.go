@@ -102,8 +102,8 @@ func TestSetLang(t *testing.T) {
 // aux erreurs de l'API.
 func TestLanguageEverywhere(t *testing.T) {
 	for _, c := range []struct{ lang, title, add, msg, manifest, notFound string }{
-		{"en", "<title>Lists</title>", `placeholder="Add…"`, `"uncheckAll":"Uncheck all"`, `"name": "Lists"`, "Not found."},
-		{"fr", "<title>Listes</title>", `placeholder="Ajouter…"`, `"uncheckAll":"Tout décocher"`, `"name": "Listes"`, "Introuvable."},
+		{"en", "<title>giga-simple-lists</title>", `placeholder="Add…"`, `"uncheckAll":"Uncheck all"`, `"name": "giga-simple-lists"`, "Not found."},
+		{"fr", "<title>giga-simple-lists</title>", `placeholder="Ajouter…"`, `"uncheckAll":"Tout décocher"`, `"description": "Listes à cocher partagées"`, "Introuvable."},
 	} {
 		t.Run(c.lang, func(t *testing.T) {
 			useLang(t, c.lang)
