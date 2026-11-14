@@ -6,7 +6,11 @@ list is just a series of checkboxes, always editable. One static Go binary, one 
 
 [Version française](README.fr.md)
 
-![A grocery list grouped by category (fruit & veg, fresh, pantry): items to check, checked ones at the bottom of their category, tabs for the other lists at the top](docs/screenshots/courses.png)
+![A grocery list grouped by category (fruit & veg, fresh, pantry): items to check, checked ones at the bottom of their category, tabs for the other lists at the top](docs/screenshots/groceries.png)
+
+<p align="center">
+  <img src="docs/screenshots/realtime.gif" width="620" alt="Two phones on the same shared grocery list: items checked or added on one appear on the other in under a second">
+</p>
 
 ## What it does
 
@@ -57,13 +61,13 @@ flowchart TB
   Sam <--> P
 ```
 
-![A list shared by another account, with categories: the same list, editable by both; a category whose items are all checked is struck through](docs/screenshots/liste-partagee.png)
+![A list shared by another account, with categories: the same list, editable by both; a category whose items are all checked is struck through](docs/screenshots/shared-list.png)
 
 <p align="center">
-  <img src="docs/screenshots/telephone.png" width="620" alt="On a phone: the grocery list with categories, then the list sheet open at the bottom of the screen, with the number of items left in each">
+  <img src="docs/screenshots/phone.png" width="620" alt="On a phone: the grocery list with categories, then the list sheet open at the bottom of the screen, with the number of items left in each">
 </p>
 
-Screenshots show the French interface, with made-up data.
+Screenshots taken with made-up data.
 
 ## Non-goals
 
@@ -283,7 +287,7 @@ every language has every key.
   idempotent; "Delete checked" sends the items seen as checked, so a resend does not delete what
   someone else checked in the meantime. 15 s timeout per request, SSE ping every 20 s, watched by
   the client.
-- **Security** (choices and reasons, in French: [SECURITY.md](SECURITY.md)): password-only sign-in
+- **Security** (choices and reasons: [SECURITY.md](SECURITY.md)): password-only sign-in
   (Argon2id, OWASP parameters), constant response time and a single message; per-IP blocking,
   per-account slowdown only (capped at 1 min, so a third party cannot lock an account out), stored
   in the database; `__Host-session` cookie (only its hash is stored), Origin + Sec-Fetch-Site + CSRF
