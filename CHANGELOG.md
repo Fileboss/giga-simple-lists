@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased (proposed: v2.2.0)
+## Unreleased
+
+### Fixed
+
+- Installed app on Android: an empty list no longer needs scrolling to reach the bottom of the page
+  (the page height now follows the window's real height: Chrome can keep a larger `100dvh` there).
+
+## v2.2.0 (2026-11-14)
 
 ### Added
 

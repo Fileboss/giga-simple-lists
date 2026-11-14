@@ -2,6 +2,12 @@
 // liste, sans compte, en temps réel (SSE) ; sans réseau, les coches attendent son retour.
 'use strict';
 (() => {
+  // Hauteur réelle de la fenêtre (--app-height, app.css) : dans l'appli installée sur
+  // Android, Chrome garde pour 100dvh et 100 % la hauteur du lancement, plus grande que la
+  // zone visible (884 px pour 828 sur un Pixel 10) : une liste vide obligeait à défiler.
+  const fitHeight = () => document.documentElement.style.setProperty('--app-height', innerHeight + 'px');
+  fitHeight();
+  addEventListener('resize', fitHeight);
   const TOKEN = document.body.dataset.token;
   const BASE = '/s/' + TOKEN;
   const STATE_KEY = 'listes.public.' + TOKEN; // dernière liste vue, pour l'ouvrir sans réseau

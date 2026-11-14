@@ -1,6 +1,12 @@
 // giga-simple-lists : rendu, mises à jour optimistes, file d'attente hors ligne, temps réel (SSE).
 'use strict';
 (() => {
+  // Hauteur réelle de la fenêtre (--app-height, app.css) : dans l'appli installée sur
+  // Android, Chrome garde pour 100dvh et 100 % la hauteur du lancement, plus grande que la
+  // zone visible (884 px pour 828 sur un Pixel 10) : une liste vide obligeait à défiler.
+  const fitHeight = () => document.documentElement.style.setProperty('--app-height', innerHeight + 'px');
+  fitHeight();
+  addEventListener('resize', fitHeight);
   const ME = document.body.dataset.me;
   const CSRF = document.querySelector('meta[name="csrf-token"]').content;
   const QUEUE_KEY = 'listes.queue.' + ME;
