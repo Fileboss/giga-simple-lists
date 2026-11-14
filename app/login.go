@@ -44,13 +44,14 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(a.cookieName(loginCSRFCookie))
 	if !a.sameOrigin(r) || err != nil || r.ParseForm() != nil ||
 		subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.Value)) != 1 {
-		slog.Warn(T("log.loginRefusedCSRF"), "ip", ip)
+		slog.Warn(T("log.loginRefusedCSRF"), "ip", ip, "origin", r.Header.Get("Origin"), "expected", a.cfg.Origin)
 		// Formulaire HTML classique : on réaffiche la page (cas typique : jeton expiré après 1 h).
 		// Page ouverte à une autre adresse que LISTES_ORIGIN (http://<ip>:5240 au lieu de
-		// l'URL publique, erreur classique d'une première installation) : on le dit.
+		// l'URL publique, erreur classique d'une première installation) : on le dit, sans
+		// donner l'adresse configurée à n'importe quel visiteur.
 		msg := T("login.expired")
 		if o := r.Header.Get("Origin"); o != "" && o != a.cfg.Origin {
-			msg = tf("login.wrongOrigin", a.cfg.Origin)
+			msg = T("login.wrongOrigin") // l'adresse attendue reste dans les journaux, pas dans la page
 		}
 		a.renderLogin(w, http.StatusForbidden, msg)
 		return

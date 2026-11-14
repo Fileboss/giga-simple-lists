@@ -51,6 +51,9 @@ second.
   `Secure`, and travel in clear text. Without the option, an `http://` origin other than localhost
   stops the app at startup, and the option is refused with an `https://` origin: an HTTPS instance
   cannot lose `Secure` by mistake. CSRF protection (Origin, Sec-Fetch-Site, token) is unchanged.
+  Cookies are not isolated by port: any other HTTP service on the same host (`192.168.1.10:8080`)
+  receives `listes_session` and can set it. Use this mode only on a host whose other services you
+  trust.
 - **`SameSite=Lax`, not `Strict`.** Opened from the home screen (iOS especially), the app starts
   with a navigation that the browser treats as coming from another site: a `Strict` cookie is not
   sent, and the app asked to sign in again every time. `Lax` only sends the cookie from another site

@@ -15,16 +15,15 @@
   cross-compilation. Releases are also tagged `:X.Y` and `:X`.
 - Dark mode, following the device setting.
 - `listes backup [<file>]`: consistent copy of the database while the server runs (the image has no
-  `sqlite3`).
+  `sqlite3`). It opens the database read-only and never migrates or creates it.
 - `LISTES_INSECURE_HTTP`: opt-in for an `http://` origin other than localhost, on a trusted LAN.
-  Without it, such an origin now stops the app at startup with an explanation instead of a sign-in
-  that silently fails.
+  Without it, such an origin still stops the app at startup, now with an explanation of the option.
 - Signing in from an address other than `LISTES_ORIGIN` now says so, instead of "page expired".
 - English README and SECURITY (French versions in `README.fr.md` and `SECURITY.fr.md`), with a
   hardened `compose.yaml` example, a non-goals section, English screenshots and a real-time demo GIF.
 
 ### Changed
 
-- The app is named giga-simple-lists everywhere it shows a name (page titles, home-screen name,
-  logs), like the repository. Technical names are unchanged so existing deployments keep working:
-  binary `listes`, `LISTES_*` variables, `/data/listes.db`, cookies.
+- The project is named giga-simple-lists, like the repository (docs, logs). The interface keeps the
+  short name "Listes" (page titles, home-screen name). Technical names are unchanged so existing
+  deployments keep working: binary `listes`, `LISTES_*` variables, `/data/listes.db`, cookies.

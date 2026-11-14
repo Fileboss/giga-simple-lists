@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"sort"
 	"time"
 
@@ -53,6 +54,21 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// openBackupSource : la base existante, en lecture seule et sans migration. Une sauvegarde
+// lancée avec une image plus récente ne migre pas la base de prod sous l'ancien serveur,
+// et un mauvais LISTES_DB ne crée pas une base vide à « sauvegarder ».
+func openBackupSource(path string) (*sql.DB, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf(T("cli.backupNoDB"), path)
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(10000)")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	return db, nil
+}
+
 func migrate(db *sql.DB) error {
 	names, err := fs.Glob(migrationsFS, "migrations/*.sql")
 	if err != nil {
@@ -89,7 +105,7 @@ func migrate(db *sql.DB) error {
 	}
 	var fk int
 	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&fk); err != nil || fk != 1 {
-		return fmt.Errorf("clés étrangères inactives")
+		return errors.New(T("err.foreignKeys"))
 	}
 	return nil
 }

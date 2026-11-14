@@ -54,6 +54,9 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
   `Secure`, et circulent en clair. Sans l'option, une origine `http://` hors localhost empêche le
   démarrage, et l'option est refusée avec une origine `https://` : une instance HTTPS ne peut pas
   perdre `Secure` par erreur. Le CSRF (Origin, Sec-Fetch-Site, jeton) ne change pas.
+  Les cookies ne sont pas isolés par port : tout autre service HTTP de la même machine
+  (`192.168.1.10:8080`) reçoit `listes_session` et peut le poser. Ce mode n'est à utiliser que
+  sur une machine dont on fait confiance aux autres services.
 - **`SameSite=Lax`, pas `Strict`.** Ouverte depuis l'écran d'accueil (iOS surtout), l'appli démarre
   par une navigation que le navigateur traite comme venue d'un autre site : un cookie `Strict` n'y
   est pas envoyé, et l'appli redemandait la connexion à chaque ouverture. `Lax` n'envoie le cookie,

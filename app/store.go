@@ -26,9 +26,9 @@ const (
 )
 
 var (
-	errNotFound  = errors.New("introuvable")
-	errForbidden = errors.New("réservé au propriétaire de la liste")
-	errLimit     = errors.New("limite atteinte")
+	errNotFound  = errors.New("not found")
+	errForbidden = errors.New("list owner only")
+	errLimit     = errors.New("limit reached")
 )
 
 // invalidError : requête invalide (400) ; la valeur est une clé de message (i18n.go).
