@@ -28,7 +28,10 @@ body {
   letter-spacing: .01em;
   color: var(--ink);
   background: var(--paper);
+  /* dvh : la hauteur réellement visible. Sur Chrome Android, 100vh compte l'écran sans la
+     barre d'adresse : une liste vide dépassait de sa hauteur et obligeait à faire défiler. */
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
