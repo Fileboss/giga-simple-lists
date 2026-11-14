@@ -108,6 +108,12 @@ func (a *App) localizeManifest() {
 // commitAndPublish exécute fn dans une transaction puis publie ses événements, le tout sous un
 // même verrou : l'ordre des événements suit celui des commits.
 func (a *App) commitAndPublish(fn func(tx *sql.Tx) ([]event, error)) error {
+	return a.commitAndPublishThen(fn, nil)
+}
+
+// commitAndPublishThen : comme commitAndPublish, puis after (si non nil) toujours sous le
+// verrou : aucune écriture ne peut publier entre le commit et after.
+func (a *App) commitAndPublishThen(fn func(tx *sql.Tx) ([]event, error), after func()) error {
 	a.writeMu.Lock()
 	defer a.writeMu.Unlock()
 	tx, err := a.db.Begin()
@@ -123,6 +129,9 @@ func (a *App) commitAndPublish(fn func(tx *sql.Tx) ([]event, error)) error {
 		return err
 	}
 	a.hub.publish(evs...)
+	if after != nil {
+		after()
+	}
 	return nil
 }
 

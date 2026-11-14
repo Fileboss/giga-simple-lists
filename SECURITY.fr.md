@@ -127,15 +127,20 @@ couvrent les navigateurs anciens et les erreurs de configuration.
   décocher ses éléments, rien d'autre : aucune route ne permet à un visiteur d'ajouter, modifier,
   déplacer ou supprimer un élément, ni de lire quoi que ce soit sur les comptes, les membres ou le
   partage (la vue publique et ses événements temps réel ne portent que les éléments, le nom et la
-  couleur).
+  couleur ; pas même le nom du propriétaire, qui est son identifiant de connexion).
 - Le jeton est gardé en clair, pour que le propriétaire puisse recopier le lien à tout moment. Il ne
   donne accès qu'à ce que la base contient déjà en clair. Remplacer le lien (ou le couper) invalide
-  l'ancien jeton et coupe aussitôt les flux temps réel de ses visiteurs.
+  l'ancien jeton et coupe aussitôt les flux temps réel de ses visiteurs : sous le verrou d'écriture,
+  donc aucune modification ne leur parvient après le commit du nouveau jeton, et un flux ouvert
+  pendant le changement est revérifié une fois abonné.
 - Pas de session, donc pas de jeton CSRF : les écritures exigent l'`Origin` du site (et
   `Sec-Fetch-Site` s'il est présent) et un corps JSON, qui impose une requête préalable CORS depuis
   tout autre site.
-- Au plus 120 écritures par minute et par IP ; les flux temps réel anonymes ont leur propre plafond
-  (32 au total, 4 par IP), distinct de celui des comptes, qui ne peuvent donc jamais en manquer.
+- Au plus 120 écritures par minute et par IP ; les flux temps réel anonymes ont leurs propres
+  plafonds (64 au total, 16 par lien, 8 par IP), distincts de celui des comptes, qui ne peuvent donc
+  jamais en manquer, et qui détient un lien ne peut saturer que celui-là. Une adresse IPv6 compte
+  pour tout son /64. Derrière un reverse proxy, ces limites reposent sur `LISTES_TRUSTED_PROXIES` :
+  sans lui, tous les visiteurs partagent l'IP du proxy.
 - `Referrer-Policy: same-origin` et `X-Robots-Tag: noindex` : le jeton ne sort pas du site et la
   page n'est pas indexée.
 ### Navigateur

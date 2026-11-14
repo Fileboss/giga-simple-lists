@@ -17,7 +17,7 @@
     remove(k) { try { localStorage.removeItem(k); } catch { /* stockage indisponible */ } },
   };
 
-  let list = store.get(STATE_KEY); // {name, color, owner_name, items}
+  let list = store.get(STATE_KEY); // {name, color, items}
   const queue = store.get(QUEUE_KEY) || {};
   let gone = false;
 
@@ -115,12 +115,15 @@
 
   let flushing = false;
   let retryTimer = null;
+  let skipped = false; // événement d'un élément ignoré parce qu'il était dans la file
   async function flush() {
     if (flushing || gone) return;
     flushing = true;
     clearTimeout(retryTimer);
     try {
-      for (const id of Object.keys(queue)) {
+      // Tant que la file n'est pas vide : une coche faite pendant un envoi (ou un élément
+      // recoché entre-temps) part dans la même boucle, pas au prochain geste.
+      for (let id; (id = Object.keys(queue)[0]) !== undefined && !gone;) {
         const checked = queue[id];
         const ctl = new AbortController();
         const slow = setTimeout(() => setOffline(true), 4000);
@@ -135,12 +138,13 @@
             signal: ctl.signal,
           });
         } catch {
-          return retryLater();
+          return retryLater(true);
         } finally {
           clearTimeout(slow);
           clearTimeout(abort);
         }
-        if ([429, 502, 503, 504].includes(res.status)) return retryLater();
+        if (res.status === 429) return retryLater(false); // le réseau marche : pas « hors ligne »
+        if ([502, 503, 504].includes(res.status)) return retryLater(true);
         setOffline(false);
         if (queue[id] === checked) delete queue[id];
         store.set(QUEUE_KEY, queue);
@@ -150,38 +154,42 @@
           toast(err.error || t('refused'));
         }
       }
+      // Des coches d'autres visiteurs ont pu arriver pendant l'envoi : état du serveur.
+      if (skipped && !Object.keys(queue).length) { skipped = false; resync(); }
     } finally {
       flushing = false;
     }
   }
 
-  function retryLater() {
-    setOffline(true);
+  function retryLater(offline) {
+    if (offline) setOffline(true);
     clearTimeout(retryTimer);
     retryTimer = setTimeout(flush, 5000);
   }
 
-  // État du serveur, avec par-dessus les coches encore en attente.
+  // État du serveur, avec par-dessus les coches encore en attente. Vrai si le serveur a répondu.
   async function resync() {
     let res;
     try {
       res = await fetch(BASE + '/state', { credentials: 'omit' });
     } catch {
       setOffline(true);
-      return;
+      return false;
     }
-    if (res.status === 404) { showGone(); return; }
-    if (!res.ok) return;
+    if (res.status === 404) { showGone(); return true; }
+    if (!res.ok) return res.status === 429;
     list = await res.json();
     list.items = list.items || [];
     list.items.forEach((it) => { if (it.id in queue) it.checked = queue[it.id]; });
     render();
+    return true;
   }
 
   // ---------------------------------------------------------------------------
   // Temps réel
 
   let es = null;
+  let retryDelay = 3000;
   let lastEvent = Date.now();
   const on = (name, fn) => es.addEventListener(name, (e) => { lastEvent = Date.now(); fn(e.data ? JSON.parse(e.data) : null); });
   function connect() {
@@ -189,14 +197,21 @@
     if (es) es.close();
     lastEvent = Date.now();
     es = new EventSource(BASE + '/events');
-    es.onopen = () => { lastEvent = Date.now(); setOffline(false); flush(); resync(); };
+    es.onopen = () => { lastEvent = Date.now(); retryDelay = 3000; setOffline(false); flush(); resync(); };
     es.onerror = () => {
-      setOffline(true);
-      if (es.readyState === EventSource.CLOSED) setTimeout(() => resync().then(connect), 3000);
+      if (es.readyState !== EventSource.CLOSED) { setOffline(true); return; }
+      // Flux refusé (trop de connexions, 429) ou coupé : si le serveur répond, ce n'est pas
+      // « hors ligne » ; on réessaie de plus en plus tard (30 s au plus).
+      setTimeout(async () => {
+        if (await resync()) setOffline(false);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+        connect();
+      }, retryDelay);
     };
     on('ping', () => {});
     on('item', (it) => {
-      if (!list || it.id in queue) return;
+      if (!list) return;
+      if (it.id in queue) { skipped = true; return; }
       const i = list.items.findIndex((x) => x.id === it.id);
       if (i >= 0) list.items[i] = it; else list.items.push(it);
       render();

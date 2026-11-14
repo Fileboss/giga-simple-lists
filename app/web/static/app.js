@@ -1227,7 +1227,7 @@
   function renderShare(l) {
     el.shareTitle.textContent = t('shareTitle', { q: quote(l.name) });
     const members = l.members || [];
-    const who = l.shared ? 'everyone' : (members.length || peopleMode ? 'people' : 'private');
+    const who = peopleMode || (!l.shared && members.length) ? 'people' : (l.shared ? 'everyone' : 'private');
     el.shareDialog.querySelectorAll('input[name="who"]').forEach((r) => { r.checked = r.value === who; });
     el.sharePeople.hidden = who !== 'people';
     const known = new Map((accounts || []).map((a) => [a.id, a.name]));
@@ -1254,7 +1254,7 @@
     el.publicCopy.textContent = t(navigator.share ? 'sendLink' : 'copyLink');
   }
 
-  let peopleMode = false; // « Des comptes précis » choisi, aucun encore coché
+  let peopleMode = false; // « Des comptes précis » choisi (même sans compte coché)
   function setSharing(shared, members) {
     const l = currentList();
     if (!l) return;
@@ -1275,7 +1275,8 @@
       peopleMode = r.value === 'people';
       if (r.value === 'everyone') setSharing(true, []);
       else if (r.value === 'private') setSharing(false, []);
-      else if (l.shared) setSharing(false, []);
+      // « Des comptes précis » : rien n'est envoyé avant le premier compte coché (la liste
+      // reste partagée comme avant), puis le changement part en une seule requête.
       renderShare(l);
     } else if (r.closest('#share-people')) {
       const ids = [...el.sharePeople.querySelectorAll('input:checked')].map((x) => x.value);
