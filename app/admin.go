@@ -28,10 +28,11 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 		fromStdin := len(args) > 3 && args[3] == "--password-stdin"
 		return setUser(out, in, db, args[2], args[1] == "add", fromStdin)
 	case "user admin":
-		if len(args) < 3 {
+		// Arguments stricts : une faute de frappe sur --revoke ne doit pas donner le rôle.
+		if len(args) < 3 || len(args) > 4 || (len(args) == 4 && args[3] != "--revoke") {
 			return errors.New(T("cli.usage"))
 		}
-		revoke := len(args) > 3 && args[3] == "--revoke"
+		revoke := len(args) == 4
 		u, err := userByName(db, args[2])
 		if errors.Is(err, errNotFound) {
 			return fmt.Errorf(T("cli.notFound"), args[2])
@@ -39,7 +40,7 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 		if err != nil {
 			return err
 		}
-		if err := setAdmin(db, u.ID, !revoke); errors.Is(err, errLastAdmin) {
+		if err := inTx(db, func(tx *sql.Tx) error { return setAdmin(tx, u.ID, !revoke) }); errors.Is(err, errLastAdmin) {
 			return errors.New(T("cli.lastAdmin"))
 		} else if err != nil {
 			return err
@@ -51,16 +52,20 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 		}
 		return nil
 	case "user list":
-		rows, err := db.Query(`SELECT u.name, (SELECT count(*) FROM sessions s WHERE s.user_id = u.id) FROM users u ORDER BY u.name`)
+		rows, err := db.Query(`SELECT u.name, u.is_admin, (SELECT count(*) FROM sessions s WHERE s.user_id = u.id) FROM users u ORDER BY u.name`)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var name string
+			var admin bool
 			var n int
-			if err := rows.Scan(&name, &n); err != nil {
+			if err := rows.Scan(&name, &admin, &n); err != nil {
 				return err
+			}
+			if admin {
+				name += " " + T("cli.adminTag")
 			}
 			fmt.Fprintf(out, T("cli.sessionsRow"), name, n)
 		}
@@ -130,6 +135,10 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 		if isConstraint(err) {
 			return fmt.Errorf(T("cli.exists"), name)
 		}
+		if err == nil && n == 0 {
+			// Premier compte créé ici : le lien de premier compte écrit dans les journaux ne sert plus.
+			_, err = tx.Exec(`DELETE FROM invitations WHERE kind = 'invite' AND created_by IS NULL AND is_admin = 1`)
+		}
 	} else {
 		var res sql.Result
 		res, err = tx.Exec(`UPDATE users SET password_hash = ? WHERE name = ?`, hash, name)
@@ -141,6 +150,9 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 		}
 		if err == nil {
 			_, err = tx.Exec(`DELETE FROM login_attempts WHERE key = ?`, userKey(name))
+		}
+		if err == nil { // un lien de réinitialisation en attente ne sert plus
+			_, err = tx.Exec(`DELETE FROM invitations WHERE kind = 'reset' AND user_id = (SELECT id FROM users WHERE name = ?)`, name)
 		}
 	}
 	if err != nil {
@@ -241,4 +253,17 @@ func rowsAffected(res sql.Result, err error) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// inTx : fn dans une transaction (BEGIN IMMEDIATE : sérialisée avec le serveur).
+func inTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

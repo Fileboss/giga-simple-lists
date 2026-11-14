@@ -126,7 +126,7 @@ func (a *App) adminRole(w http.ResponseWriter, r *http.Request, s *session) {
 		return
 	}
 	admin := r.PostFormValue("admin") == "1"
-	if err := setAdmin(a.db, u.ID, admin); err != nil {
+	if _, err := a.inTx(func(tx *sql.Tx) ([][]byte, error) { return nil, setAdmin(tx, u.ID, admin) }); err != nil {
 		a.adminError(w, s, err)
 		return
 	}

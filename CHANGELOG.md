@@ -14,7 +14,8 @@
 
 ### Upgrading
 
-- The database is migrated at startup: the oldest account becomes the admin. Sessions are kept.
+- The database is migrated at startup: the oldest account becomes the admin, and the logs say which
+  one. Sessions are kept.
 
 ## v2.0.0 (2026-11-14)
 

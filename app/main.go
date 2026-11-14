@@ -19,7 +19,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -97,7 +96,10 @@ func run(args []string) error {
 		}
 		defer db.Close()
 		if len(args) > 1 && args[0] == "user" && args[1] == "invite" {
-			return inviteCommand(os.Stdout, db, cfg.Origin, slices.Contains(args[2:], "--admin"))
+			if len(args) > 3 || (len(args) == 3 && args[2] != "--admin") {
+				return errors.New(T("cli.usage"))
+			}
+			return inviteCommand(os.Stdout, db, cfg.Origin, len(args) == 3)
 		}
 		return adminCommand(os.Stdout, os.Stdin, db, args)
 	case "backup":

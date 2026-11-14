@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"os"
+	"path"
 	"sort"
 	"time"
 
@@ -101,6 +103,13 @@ func migrate(db *sql.DB) error {
 		}
 		if err := tx.Commit(); err != nil {
 			return err
+		}
+		if path.Base(name) == "004_accounts.sql" {
+			// Le plus ancien compte est devenu admin : pas forcément celui de l'opérateur.
+			var admin string
+			if db.QueryRow(`SELECT name FROM users WHERE is_admin = 1`).Scan(&admin) == nil {
+				slog.Info(T("log.adminPromoted"), "user", admin)
+			}
 		}
 	}
 	var fk int
