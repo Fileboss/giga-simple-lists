@@ -44,6 +44,8 @@ type App struct {
 	writeMu sync.Mutex
 	// Écritures anonymes par IP (liens publics).
 	publicWrites rateLimiter
+	// Appels avec un jeton d'API, par compte.
+	tokenCalls rateLimiter
 }
 
 type staticFile struct {
@@ -62,6 +64,7 @@ func newApp(cfg config, db *sql.DB) *App {
 		loginMin:     800 * time.Millisecond,
 		heartbeat:    20 * time.Second,
 		publicWrites: rateLimiter{counts: map[string]int{}},
+		tokenCalls:   rateLimiter{counts: map[string]int{}},
 	}
 	fs.WalkDir(staticFS, "web/static", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -155,6 +158,10 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /account/password", a.authedPage(a.accountPassword))
 	mux.HandleFunc("POST /account/sessions/{id}/revoke", a.authedPage(a.accountRevoke))
 	mux.HandleFunc("POST /account/sessions/revoke-others", a.authedPage(a.accountRevokeOthers))
+	mux.HandleFunc("GET /account/export", a.authedPage(a.accountExport))
+	mux.HandleFunc("POST /account/import", a.authedPage(a.accountImport))
+	mux.HandleFunc("POST /account/token", a.authedPage(a.accountNewToken))
+	mux.HandleFunc("POST /account/token/revoke", a.authedPage(a.accountRevokeToken))
 	mux.HandleFunc("GET /admin", a.adminOnly(a.adminPage))
 	mux.HandleFunc("POST /admin/invites", a.adminOnly(a.adminInvite))
 	mux.HandleFunc("POST /admin/invites/{id}/delete", a.adminOnly(a.adminDeleteLink))
@@ -169,6 +176,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/lists/{id}", a.authedAPI(a.apiUpdateList))
 	mux.HandleFunc("DELETE /api/lists/{id}", a.authedAPI(a.apiDeleteList))
 	mux.HandleFunc("POST /api/lists/{id}/items", a.authedAPI(a.apiCreateItem))
+	mux.HandleFunc("POST /api/lists/{id}/duplicate", a.authedAPI(a.apiDuplicateList))
 	mux.HandleFunc("POST /api/lists/{id}/clear-checked", a.authedAPI(a.apiClearChecked))
 	mux.HandleFunc("POST /api/lists/{id}/restore", a.authedAPI(a.apiRestoreItems))
 	mux.HandleFunc("PATCH /api/items/{id}", a.authedAPI(a.apiUpdateItem))
@@ -178,6 +186,10 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /api/lists/{id}/public-link", a.authedAPI(a.apiGetPublicLink))
 	mux.HandleFunc("POST /api/lists/{id}/public-link", a.authedAPI(a.apiCreatePublicLink))
 	mux.HandleFunc("DELETE /api/lists/{id}/public-link", a.authedAPI(a.apiDeletePublicLink))
+
+	// Jeton d'API personnel (intégrations) : ajouter un élément, lister les listes.
+	mux.HandleFunc("GET /api/v1/lists", a.tokenAPI(a.apiV1Lists))
+	mux.HandleFunc("POST /api/v1/items", a.tokenAPI(a.apiV1AddItem))
 
 	// Lien public : sans compte, cocher et décocher seulement.
 	mux.HandleFunc("GET /s/{token}", a.publicPage)
@@ -214,7 +226,11 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func limitBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		n := int64(maxBodyBytes)
+		if r.URL.Path == "/account/import" {
+			n = maxImportBytes + 64<<10 // le fichier et l'enveloppe multipart
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, n)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -281,6 +297,13 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 			token = c.Value
 		}
 		s, refreshed, err := lookupSession(a.db, token)
+		// LISTES_AUTH_HEADER : le reverse proxy a déjà authentifié la personne. Sans
+		// session à son nom, on en ouvre une (comme une connexion par mot de passe).
+		if u := a.headerUser(r); u != nil && (err != nil || s.UserID != u.ID) {
+			if s, err = a.headerSession(w, r, u); err == nil {
+				refreshed = false
+			}
+		}
 		if err != nil {
 			if !errors.Is(err, errNotFound) {
 				errorLog("session", err)

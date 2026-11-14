@@ -25,6 +25,9 @@ type pageData struct {
 	MinPassword int
 
 	Sessions []sessionInfo // mon compte
+	Token    *tokenInfo    // jeton d'API (nil : aucun)
+	NewToken string        // jeton qui vient d'être créé, affiché une seule fois
+	Origin   string        // adresse publique, pour l'exemple d'appel à l'API
 
 	Accounts   []account    // administration
 	Links      []invitation // liens en attente
@@ -52,6 +55,7 @@ func (a *App) accountPage(w http.ResponseWriter, r *http.Request, s *session) {
 // Messages après redirection : une clé connue seulement (jamais de texte venu de l'URL).
 var flashKeys = map[string]string{
 	"password": "account.passwordChanged", "revoked": "account.sessionRevoked", "others": "account.othersRevoked",
+	"imported": "account.imported", "token": "account.tokenRevoked",
 	"invite": "admin.linkDeleted", "role": "admin.roleChanged", "signout": "admin.signedOut", "deleted": "admin.userDeleted",
 }
 
@@ -63,14 +67,33 @@ func flashFromQuery(r *http.Request) string {
 }
 
 func (a *App) renderAccount(w http.ResponseWriter, status int, s *session, flash, errMsg string) {
-	p := a.basePage(s, T("account.title"))
-	p.Flash, p.Error = flash, errMsg
-	var err error
-	if p.Sessions, err = userSessions(a.db, s.UserID, s.Hash); err != nil {
-		writeErr(w, err)
+	p := a.accountPageData(w, s)
+	if p == nil {
 		return
 	}
-	a.render(w, status, "account.html", p)
+	p.Flash, p.Error = flash, errMsg
+	a.render(w, status, "account.html", *p)
+}
+
+type tokenInfo struct{ Created, LastUsed int64 }
+
+// accountPageData : nil si la lecture a échoué (la réponse d'erreur est déjà écrite).
+func (a *App) accountPageData(w http.ResponseWriter, s *session) *pageData {
+	p := a.basePage(s, T("account.title"))
+	p.Origin = a.cfg.Origin
+	var err error
+	if p.Sessions, err = userSessions(a.db, s.UserID, s.Hash); err == nil {
+		var created, used int64
+		var ok bool
+		if created, used, ok, err = hasAPIToken(a.db, s.UserID); ok {
+			p.Token = &tokenInfo{created, used}
+		}
+	}
+	if err != nil {
+		writeErr(w, err)
+		return nil
+	}
+	return &p
 }
 
 // accountPassword : mot de passe actuel exigé (et compté comme une tentative de

@@ -17,7 +17,7 @@
     tabs: $('tabs'), tabsPrev: $('tabs-prev'), tabsNext: $('tabs-next'), newList: $('new-list'), offline: $('offline'), toast: $('toast'),
     list: $('list'), title: $('title'), share: $('share'), ownerNote: $('owner-note'),
     add: $('add'), newItem: $('new-item'), addBtn: $('add-btn'), items: $('items'), checkedTools: $('checked-tools'), uncheck: $('uncheck-all'), clear: $('clear-checked'),
-    ownerTools: $('owner-tools'), del: $('delete'), confirm: $('confirm-delete'),
+    ownerTools: $('owner-tools'), del: $('delete'), duplicate: $('duplicate'), confirm: $('confirm-delete'),
     confirmText: $('confirm-text'), delYes: $('delete-yes'), delNo: $('delete-no'), empty: $('empty'),
     listHead: $('list-head'), switcher: $('switcher'), switcherName: $('switcher-name'),
     sheet: $('sheet'), sheetLists: $('sheet-lists'), sheetNew: $('sheet-new'), sheetRename: $('sheet-rename'),
@@ -1413,6 +1413,33 @@
       const chunk = ids.slice(i, i + 200);
       send('POST', '/api/lists/' + l.id + '/clear-checked', { ids: chunk }, chunk);
     }
+  });
+
+  // Dupliquer : copie privée, éléments décochés (un modèle réutilisé). Il faut le réseau :
+  // la copie est faite par le serveur, qui l'envoie aussi par le flux temps réel.
+  el.duplicate.addEventListener('click', async () => {
+    const l = currentList();
+    if (!l) return;
+    let res;
+    try {
+      res = await fetch('/api/lists/' + l.id + '/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify({ nonce: randomHex() }),
+      });
+    } catch {
+      res = null;
+    }
+    if (!res || !res.ok) {
+      const err = res ? await res.json().catch(() => ({})) : {};
+      toast(err.error || t('needsNetwork'));
+      return;
+    }
+    const copy = await res.json();
+    if (!byId(copy.id)) lists.push({ ...copy, items: copy.items || [] });
+    open(copy.id);
+    toast(t('duplicated', { q: quote(copy.name) }));
   });
 
   // Suppression : confirmation dans la page.
