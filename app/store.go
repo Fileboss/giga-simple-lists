@@ -19,7 +19,6 @@ const (
 	maxListName      = 80
 	maxListsPerUser  = 200
 	maxItemsPerList  = 2000
-	defaultListName  = "Nouvelle liste"
 	maxBodyBytes     = 16 << 10
 	maxUserNameRunes = 32
 	maxClearIDs      = 200 // par requête « supprimer les cochés » (tient dans maxBodyBytes)
@@ -32,9 +31,10 @@ var (
 	errLimit     = errors.New("limite atteinte")
 )
 
+// invalidError : requête invalide (400) ; la valeur est une clé de message (i18n.go).
 type invalidError string
 
-func (e invalidError) Error() string { return string(e) }
+func (e invalidError) Error() string { return T(string(e)) }
 
 type List struct {
 	ID        string `json:"id"`
@@ -220,7 +220,7 @@ func creationID(userID, nonce string) (string, error) {
 		return newID(), nil
 	}
 	if !hex128Re.MatchString(nonce) {
-		return "", invalidError("nonce invalide")
+		return "", invalidError("err.nonce")
 	}
 	h := sha256.Sum256([]byte("listes-id\x00" + userID + "\x00" + nonce))
 	return hex.EncodeToString(h[:16]), nil
@@ -232,7 +232,7 @@ func validID(id string) bool { return hex128Re.MatchString(id) }
 // de bord retirés, au plus max caractères.
 func cleanText(s string, max int) (string, error) {
 	if !utf8.ValidString(s) {
-		return "", invalidError("texte invalide")
+		return "", invalidError("err.text")
 	}
 	s = strings.TrimSpace(strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || r == ' ' || r == ' ' {
@@ -241,7 +241,7 @@ func cleanText(s string, max int) (string, error) {
 		return r
 	}, s))
 	if utf8.RuneCountInString(s) > max {
-		return "", invalidError("texte trop long")
+		return "", invalidError("err.textTooLong")
 	}
 	return s, nil
 }
@@ -256,12 +256,12 @@ func createList(tx querier, userID, nonce, name, color string, shared bool, posi
 		return nil, false, err
 	}
 	if name == "" {
-		name = defaultListName
+		name = T("list.default")
 	}
 	if color == "" {
 		color = colors[0].Key
 	} else if !validColor(color) {
-		return nil, false, invalidError("couleur inconnue")
+		return nil, false, invalidError("err.color")
 	}
 	// Requête renvoyée (file hors ligne) : même résultat, sans doublon.
 	if existing, err := accessList(tx, userID, id); err == nil {
@@ -316,7 +316,7 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 			return nil, nil, err
 		}
 		if name == "" {
-			return nil, nil, invalidError("nom vide")
+			return nil, nil, invalidError("err.nameEmpty")
 		}
 		l.Name = name
 	}
@@ -325,7 +325,7 @@ func updateList(tx querier, userID, listID string, p listPatch) (before, after *
 			return nil, nil, err
 		}
 		if !validColor(*p.Color) {
-			return nil, nil, invalidError("couleur inconnue")
+			return nil, nil, invalidError("err.color")
 		}
 		l.Color = *p.Color
 	}
@@ -368,7 +368,7 @@ func createItem(tx querier, userID, listID, nonce, text string, category bool) (
 		return nil, nil, false, err
 	}
 	if text == "" {
-		return nil, nil, false, invalidError("texte vide")
+		return nil, nil, false, invalidError("err.textEmpty")
 	}
 	if existing, err := loadItem(tx, id); err == nil {
 		if existing.ListID == l.ID {
@@ -418,7 +418,7 @@ func updateItem(tx querier, userID, itemID string, p itemPatch) (it *Item, l *Li
 	}
 	if p.Checked != nil {
 		if *p.Checked && it.Category {
-			return nil, nil, false, invalidError("une catégorie ne se coche pas")
+			return nil, nil, false, invalidError("err.categoryCheck")
 		}
 		it.Checked = *p.Checked
 	}
@@ -445,7 +445,7 @@ func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPositio
 		return nil, nil, err
 	}
 	if beforeID == itemID {
-		return nil, nil, invalidError("position invalide")
+		return nil, nil, invalidError("err.position")
 	}
 	items, err := loadItems(tx, l.ID)
 	if err != nil {
@@ -461,7 +461,7 @@ func moveItem(tx querier, userID, itemID, beforeID string) (*List, []itemPositio
 			}
 		}
 		if at < 0 {
-			return nil, nil, invalidError("position invalide")
+			return nil, nil, invalidError("err.position")
 		}
 	}
 	order = append(order[:at], append(block, order[at:]...)...)
@@ -513,7 +513,7 @@ type restoredItem struct {
 // Renvoie les éléments recréés et les positions des autres qui ont changé.
 func restoreItems(tx querier, userID, listID string, in []restoredItem) (*List, []Item, []itemPosition, error) {
 	if len(in) > maxRestoreItems {
-		return nil, nil, nil, invalidError("trop d'éléments")
+		return nil, nil, nil, invalidError("err.tooManyItems")
 	}
 	l, err := accessList(tx, userID, listID)
 	if err != nil {
@@ -523,7 +523,7 @@ func restoreItems(tx querier, userID, listID string, in []restoredItem) (*List, 
 	seen := map[string]bool{}
 	for _, r := range in {
 		if r.Nonce == "" {
-			return nil, nil, nil, invalidError("nonce manquant")
+			return nil, nil, nil, invalidError("err.nonceMissing")
 		}
 		id, err := creationID(userID, r.Nonce)
 		if err != nil {
@@ -534,10 +534,10 @@ func restoreItems(tx querier, userID, listID string, in []restoredItem) (*List, 
 			return nil, nil, nil, err
 		}
 		if text == "" {
-			return nil, nil, nil, invalidError("texte vide")
+			return nil, nil, nil, invalidError("err.textEmpty")
 		}
 		if r.Category && r.Checked {
-			return nil, nil, nil, invalidError("une catégorie ne se coche pas")
+			return nil, nil, nil, invalidError("err.categoryCheck")
 		}
 		if existing, err := loadItem(tx, id); err == nil {
 			if existing.ListID != l.ID {
@@ -604,11 +604,11 @@ func deleteItem(tx querier, userID, itemID string) (*Item, *List, error) {
 // supprime pas ce qu'un autre a coché entre-temps.
 func clearChecked(tx querier, userID, listID string, ids []string) (*List, []string, error) {
 	if len(ids) > maxClearIDs {
-		return nil, nil, invalidError("trop d'éléments")
+		return nil, nil, invalidError("err.tooManyItems")
 	}
 	for _, id := range ids {
 		if !validID(id) {
-			return nil, nil, invalidError("élément invalide")
+			return nil, nil, invalidError("err.item")
 		}
 	}
 	l, err := accessList(tx, userID, listID)

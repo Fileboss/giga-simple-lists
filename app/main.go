@@ -5,6 +5,7 @@
 //	listes user reset <nom>        nouveau mot de passe, sessions révoquées
 //	listes user list               comptes existants
 //	listes sessions revoke-all     déconnecte tout le monde
+//	listes backup [<fichier>]      copie cohérente de la base (VACUUM INTO)
 //	listes healthcheck             pour le healthcheck Docker (pas de shell ni de wget dans l'image)
 package main
 
@@ -27,6 +28,10 @@ type config struct {
 	DBPath         string   // LISTES_DB
 	Origin         string   // LISTES_ORIGIN : seule origine acceptée pour les requêtes qui modifient
 	TrustedProxies []string // LISTES_TRUSTED_PROXIES : IP dont on lit X-Forwarded-For
+	Lang           string   // LISTES_LANG : en (défaut) ou fr
+	// LISTES_INSECURE_HTTP : origine http:// hors localhost (réseau local de confiance).
+	// Les cookies perdent alors Secure et le préfixe __Host- (voir cookieName).
+	InsecureHTTP bool
 }
 
 func loadConfig() config {
@@ -35,6 +40,8 @@ func loadConfig() config {
 		DBPath:         env("LISTES_DB", "/data/listes.db"),
 		Origin:         strings.TrimRight(os.Getenv("LISTES_ORIGIN"), "/"),
 		TrustedProxies: []string{"127.0.0.1"},
+		Lang:           os.Getenv("LISTES_LANG"),
+		InsecureHTTP:   envBool("LISTES_INSECURE_HTTP"),
 	}
 	for _, ip := range strings.Split(os.Getenv("LISTES_TRUSTED_PROXIES"), ",") {
 		if ip = strings.TrimSpace(ip); net.ParseIP(ip) != nil {
@@ -51,16 +58,27 @@ func env(k, def string) string {
 	return def
 }
 
+func envBool(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "erreur :", err)
+		fmt.Fprintln(os.Stderr, T("cli.error"), err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
 	cfg := loadConfig()
+	if err := setLang(cfg.Lang); err != nil {
+		return err
+	}
 	cmd := "serve"
 	if len(args) > 0 {
 		cmd = args[0]
@@ -77,14 +95,47 @@ func run(args []string) error {
 		}
 		defer db.Close()
 		return adminCommand(os.Stdout, os.Stdin, db, args)
+	case "backup":
+		db, err := openDB(cfg.DBPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		dest := ""
+		if len(args) > 1 {
+			dest = args[1]
+		}
+		return backup(os.Stdout, db, cfg.DBPath, dest)
 	default:
-		return fmt.Errorf("commande inconnue %q (serve, user, sessions, healthcheck)", cmd)
+		return fmt.Errorf(T("cli.unknownCommand"), cmd)
 	}
 }
 
+// checkOrigin : HTTPS, ou http://localhost (le navigateur y accepte les cookies Secure),
+// ou une autre origine http:// seulement si LISTES_INSECURE_HTTP le demande explicitement.
+func checkOrigin(cfg config) error {
+	switch {
+	case strings.HasPrefix(cfg.Origin, "https://"):
+		if cfg.InsecureHTTP {
+			return errors.New(T("err.insecureHTTPS"))
+		}
+	case strings.HasPrefix(cfg.Origin, "http://localhost"):
+	case strings.HasPrefix(cfg.Origin, "http://") && len(cfg.Origin) > len("http://"):
+		if !cfg.InsecureHTTP {
+			return fmt.Errorf(T("err.originHTTP"), cfg.Origin)
+		}
+	default:
+		return errors.New(T("err.origin"))
+	}
+	return nil
+}
+
 func serve(cfg config) error {
-	if !strings.HasPrefix(cfg.Origin, "https://") && !strings.HasPrefix(cfg.Origin, "http://localhost") {
-		return errors.New("LISTES_ORIGIN doit être l'URL publique de l'appli, par exemple https://listes.example.com (ou http://localhost:5240 en local)")
+	if err := checkOrigin(cfg); err != nil {
+		return err
+	}
+	if cfg.InsecureHTTP {
+		slog.Warn(T("log.insecureHTTP"), "origin", cfg.Origin)
 	}
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
@@ -110,7 +161,7 @@ func serve(cfg config) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("listes démarré", "addr", cfg.Addr, "origin", cfg.Origin)
+	slog.Info(T("log.started"), "addr", cfg.Addr, "origin", cfg.Origin, "lang", lang)
 
 	select {
 	case err := <-errc:

@@ -6,10 +6,17 @@
   --ink: #2e2e2c;        /* texte : ≥ 7:1 sur toutes les couleurs (colors.go) */
   --muted: #62625d;      /* éléments cochés, textes secondaires : ≥ 4,5:1 */
   --faint: #9a9a94;      /* bouton −, repères */
-  --line: rgba(46, 46, 44, .09);
+  --shade: 46, 46, 44;   /* --ink en r, g, b : voiles, filets et survols, rgba(var(--shade), α) */
+  --shadow: 46, 46, 44;  /* ombres (noires en mode sombre) */
+  --line: rgba(var(--shade), .09);
   --accent: #6f8069;     /* sauge foncée : coches, focus */
   --accent-strong: #5b6b56; /* fond du bouton Ajouter : texte clair ≥ 4,5:1 */
   --danger: #9b4a3f;
+  --accent-hover: #4f5e4b; /* survol du bouton Ajouter */
+  --lifted: #fffdf8;     /* ligne soulevée pendant un glisser */
+  --undo-accent: #e9dcb0; /* « Annuler » sur le bandeau sombre */
+  --undo-hover: rgba(251, 250, 247, .1);
+  color-scheme: light dark;
   --sans: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --serif: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif", serif;
 }
@@ -36,7 +43,7 @@ button {
   cursor: pointer;
   transition: background-color .2s, color .2s;
 }
-button:hover { background-color: rgba(46, 46, 44, .04); }
+button:hover { background-color: rgba(var(--shade), .04); }
 [hidden] { display: none !important; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 ::placeholder { color: var(--faint); opacity: 1; }
@@ -81,7 +88,7 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   color: var(--muted);
   background: transparent;
 }
-.tab[aria-current="true"] { color: var(--ink); background: rgba(46, 46, 44, .06); }
+.tab[aria-current="true"] { color: var(--ink); background: rgba(var(--shade), .06); }
 /* Nom tronqué selon la largeur réelle de la barre : un onglet tient toujours en entier,
    « · de <nom> » et la marque de partage restent visibles. */
 .tab .name { max-width: 11em; max-width: min(11em, 38cqw); overflow: hidden; text-overflow: ellipsis; }
@@ -90,7 +97,7 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 1px solid rgba(46, 46, 44, .18);
+  border: 1px solid rgba(var(--shade), .18);
 }
 .tab .from { color: var(--faint); }
 .tab .mark { color: var(--faint); font-size: 14px; }
@@ -142,7 +149,7 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   text-align: center;
   pointer-events: none;
   color: var(--paper);
-  background: rgba(46, 46, 44, .88);
+  background: rgba(var(--shade), .88);
 }
 
 /* Bandeau d'annulation : seul de la pile à recevoir le toucher. */
@@ -155,12 +162,12 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   border-radius: 24px;
   font-size: 14px;
   color: var(--paper);
-  background: rgba(46, 46, 44, .92);
+  background: rgba(var(--shade), .92);
   pointer-events: auto;
 }
 .undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.undo button { flex: none; border: 0; font-weight: 600; color: #e9dcb0; }
-.undo button:hover { background-color: rgba(251, 250, 247, .1); }
+.undo button { flex: none; border: 0; font-weight: 600; color: var(--undo-accent); }
+.undo button:hover { background-color: var(--undo-hover); }
 
 /* Liste */
 .list { position: relative; flex: 1; padding: 20px 20px 32px; transition: background-color .3s; }
@@ -245,10 +252,10 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   border-radius: 20px 20px 0 0;
   color: var(--ink);
   background: var(--paper);
-  box-shadow: 0 -8px 32px rgba(46, 46, 44, .12);
+  box-shadow: 0 -8px 32px rgba(var(--shadow), .12);
   transition: transform .28s cubic-bezier(.2, .8, .2, 1);
 }
-.sheet::backdrop { background: rgba(46, 46, 44, .28); opacity: calc(1 - var(--pull, 0)); transition: background-color .28s, opacity .2s; }
+.sheet::backdrop { background: rgba(46, 46, 44, .28); /* littéral : ::backdrop n'hérite pas des variables partout */ opacity: calc(1 - var(--pull, 0)); transition: background-color .28s, opacity .2s; }
 /* Tiré par la poignée : le panneau suit le doigt, sans transition. */
 .sheet.pulling { transition: none; }
 @starting-style {
@@ -284,10 +291,10 @@ button:hover { background-color: rgba(46, 46, 44, .04); }
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(46, 46, 44, .16);
+  background: rgba(var(--shade), .16);
   transition: background-color .2s;
 }
-.sheet-grip:hover::before, .sheet.pulling .sheet-grip::before { background: rgba(46, 46, 44, .3); }
+.sheet-grip:hover::before, .sheet.pulling .sheet-grip::before { background: rgba(var(--shade), .3); }
 .sheet.pulling .sheet-grip { cursor: grabbing; }
 /* Panneau ouvert : la page derrière ne bouge plus. */
 html:has(.sheet[open]) { overflow: hidden; }
@@ -314,8 +321,8 @@ html:has(.sheet[open]) { overflow: hidden; }
   font-size: 14px;
   color: var(--ink);
   background: var(--paper);
-  border-color: rgba(46, 46, 44, .14);
-  box-shadow: 0 4px 14px rgba(46, 46, 44, .14);
+  border-color: rgba(var(--shade), .14);
+  box-shadow: 0 4px 14px rgba(var(--shadow), .14);
   transform: translateX(-50%);
 }
 .sheet-more:hover { background-color: var(--paper); }
@@ -341,7 +348,7 @@ html:has(.sheet[open]) { overflow: hidden; }
   text-align: left;
   color: var(--muted);
 }
-.sheet-item[aria-current="true"] { color: var(--ink); background: rgba(46, 46, 44, .06); }
+.sheet-item[aria-current="true"] { color: var(--ink); background: rgba(var(--shade), .06); }
 .sheet-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-item .from { color: var(--faint); font-size: 15px; white-space: nowrap; }
 .sheet-item .mark { color: var(--faint); font-size: 14px; }
@@ -402,7 +409,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   visibility: hidden;
   transition: opacity .2s, visibility .2s;
 }
-.add-btn:hover { background-color: #4f5e4b; }
+.add-btn:hover { background-color: var(--accent-hover); }
 .add.has-text .add-btn { opacity: 1; visibility: visible; }
 
 .items { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0; }
@@ -413,7 +420,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   left: 0;
   z-index: 0;
   border-radius: 10px;
-  background: rgba(46, 46, 44, .07);
+  background: rgba(var(--shade), .07);
   pointer-events: none;
   transition: transform .2s cubic-bezier(.2, .8, .2, 1);
 }
@@ -448,8 +455,8 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   border-radius: 10px;
   z-index: 2;
   border-bottom-color: transparent;
-  background-color: #fffdf8;
-  box-shadow: 0 12px 28px rgba(46, 46, 44, .16), 0 2px 6px rgba(46, 46, 44, .08);
+  background-color: var(--lifted);
+  box-shadow: 0 12px 28px rgba(var(--shadow), .16), 0 2px 6px rgba(var(--shadow), .08);
 }
 .item.dragging .handle { opacity: 1; }
 .text {
@@ -474,8 +481,8 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6lh), transparent calc(100% - 10px));
 }
 .text:focus { outline: none; }
-.item:focus-within { border-bottom-color: rgba(46, 46, 44, .22); }
-.item.done .text { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(46, 46, 44, .3); }
+.item:focus-within { border-bottom-color: rgba(var(--shade), .22); }
+.item.done .text { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(var(--shade), .3); }
 /* Catégorie : un intertitre en serif, sans case à cocher (il dépasse donc à gauche des
    éléments), sans filet ; les groupes ne sont séparés que par de l'air. Rayée quand
    tous ses éléments sont cochés. */
@@ -496,9 +503,9 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .item.folding { min-height: 0; overflow: hidden; border-bottom-color: transparent; }
 .item.grouped.category.dragging { border-radius: 12px; background-color: var(--tint); }
 .item.category.dragging.stack {
-  box-shadow: 0 8px 0 -4px var(--tint), 0 9px 0 -4px rgba(46, 46, 44, .16),
-    0 16px 0 -8px var(--tint), 0 17px 0 -8px rgba(46, 46, 44, .12),
-    0 18px 28px rgba(46, 46, 44, .16), 0 2px 6px rgba(46, 46, 44, .08);
+  box-shadow: 0 8px 0 -4px var(--tint), 0 9px 0 -4px rgba(var(--shadow), .16),
+    0 16px 0 -8px var(--tint), 0 17px 0 -8px rgba(var(--shadow), .12),
+    0 18px 28px rgba(var(--shadow), .16), 0 2px 6px rgba(var(--shadow), .08);
 }
 .remove {
   flex: none;
@@ -535,7 +542,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
   content: "";
   position: absolute;
   inset: 6px;
-  border: 1px solid rgba(46, 46, 44, .16);
+  border: 1px solid rgba(var(--shade), .16);
   border-radius: 50%;
   pointer-events: none;
   transition: box-shadow .2s;
@@ -573,6 +580,36 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .c-sauge { background-color: #ebf0e1; --tint: #ebf0e1; --deep: #e2ead2; }
 .c-gris { background-color: #efefec; --tint: #efefec; --deep: #e6e6e1; }
 .list.list { background-color: var(--deep); } /* l'emporte sur .c-<clé> */
+
+/* Mode sombre, selon le réglage de l'appareil (aucun bouton). Mêmes contrastes que le
+   mode clair : texte ≥ 7:1 et cochés ≥ 4,5:1 sur chaque couleur (colors.go, vérifié par
+   TestColorContrast). Le bandeau et les boutons pleins s'inversent d'eux-mêmes
+   (--paper sur --shade, --paper sur --ink). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1d1d1b;
+    --ink: #e9e7e1;
+    --muted: #a8a69e;
+    --faint: #7a7973;
+    --shade: 233, 231, 225;
+    --shadow: 0, 0, 0;
+    --accent: #7f9378;
+    --accent-strong: #a3b59b;
+    --accent-hover: #b4c4ac;
+    --danger: #e0907f;
+    --lifted: #2c2c29;
+    --undo-accent: #6b5a1e;
+    --undo-hover: rgba(29, 29, 27, .08);
+  }
+  .c-jaune { background-color: #383221; --tint: #383221; --deep: #2b2718; }
+  .c-peche { background-color: #3a2c25; --tint: #3a2c25; --deep: #2d221d; }
+  .c-rose { background-color: #3a2b30; --tint: #3a2b30; --deep: #2d2125; }
+  .c-lavande { background-color: #2f2c3c; --tint: #2f2c3c; --deep: #24222f; }
+  .c-bleu { background-color: #27313d; --tint: #27313d; --deep: #1e2630; }
+  .c-menthe { background-color: #26362e; --tint: #26362e; --deep: #1d2a24; }
+  .c-sauge { background-color: #2e3626; --tint: #2e3626; --deep: #232a1d; }
+  .c-gris { background-color: #31312e; --tint: #31312e; --deep: #262624; }
+}
 
 /* Connexion */
 .login { justify-content: center; align-items: center; }

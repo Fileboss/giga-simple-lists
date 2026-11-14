@@ -1,101 +1,188 @@
 # giga-simple-lists
 
-Des listes à cocher, partagées en temps réel, à auto-héberger. Courses, choses à faire aujourd'hui,
-projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujours modifiable.
+Self-hosted checklists, shared in real time. Groceries, today's to-dos, this year's projects: every
+list is just a series of checkboxes, always editable. One static Go binary, one SQLite file, a
+~16 MB image, under 30 MB of RAM.
 
-![Une liste de courses rangée par catégories (fruits et légumes, frais, épicerie) : éléments à cocher, cochés en bas de leur catégorie, onglets des autres listes en haut](docs/screenshots/courses.png)
+[Version française](README.fr.md)
 
-- Plusieurs listes, plusieurs comptes. Une liste est privée par défaut ; la case « Partager » la
-  rend visible par tous les comptes de l'instance. Chacun peut alors la renommer et en modifier les
-  éléments ; la couleur, le partage et la suppression restent réservés à son propriétaire.
-- Éléments réordonnables par glisser-déposer ; « Supprimer les cochés » supprime d'un coup les
-  éléments cochés, « Tout décocher » les remet à faire (courses récurrentes). Quand rien n'est
-  coché, le même bouton devient « Tout cocher ».
-- Catégories : « # Fruits » dans le champ d'ajout crée un titre qui regroupe les éléments placés
-  sous lui (un seul niveau). Elle ne se coche pas, mais se raye quand tous ses éléments sont
-  cochés, et se déplace avec eux. Coller plusieurs lignes ajoute un élément par ligne.
-- Annuler une suppression (élément, catégorie, cochés ou liste entière) : un bandeau « Annuler »
-  apparaît en bas, et Ctrl+Z / ⌘Z fonctionne aussi. Les 5 dernières suppressions sont gardées.
-- Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
-- Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
-  sans réseau sont renvoyées au retour de la connexion.
-- Sur téléphone, le titre de la liste ouvre un panneau, en bas de l'écran, avec toutes les listes
-  et le nombre d'éléments à faire de chacune ; on le replie en tirant sa poignée vers le bas.
-- Appli web installable sur l'écran d'accueil (iOS, Android), interface en français.
-- Un binaire Go statique et une base SQLite : moins de 30 Mo de RAM, image d'environ 16 Mo.
+![A grocery list grouped by category (fruit & veg, fresh, pantry): items to check, checked ones at the bottom of their category, tabs for the other lists at the top](docs/screenshots/courses.png)
 
-Qui voit quoi : chaque compte a ses listes privées, que lui seul voit. Une liste partagée apparaît
-chez tous les comptes de l'instance, qui peuvent la renommer et en modifier les éléments ; sa
-couleur, son partage et sa suppression restent à son propriétaire.
+## What it does
+
+- **Lists of checkboxes**, nothing else. Add with Enter, click to check, click the text to edit it.
+  Checked items sink to the bottom, greyed out.
+- **Real time**: check an item on one phone and it appears on the other in under a second (SSE).
+- **Works offline**: the app opens without network on the last lists seen, and changes made offline
+  are sent when the connection comes back. Built for the supermarket basement.
+- **Several accounts, private or shared lists.** A list is private by default; the "Share" box makes
+  it visible to every account on the instance, who can then rename it and edit its items. Colour,
+  sharing and deletion stay with its owner.
+- **Categories**: typing `# Fruit` creates a heading that groups the items below it (one level).
+  It cannot be checked, is struck through once all its items are checked, and moves with them.
+  Pasting several lines adds one item per line.
+- Drag-and-drop reordering; "Delete checked" clears them in one go, "Uncheck all" resets a recurring
+  list (groceries). When nothing is checked, the same button becomes "Check all".
+- **Undo** a deletion (item, category, checked items or a whole list): an "Undo" banner appears at
+  the bottom, and Ctrl+Z / ⌘Z works too. The last 5 deletions are kept.
+- On a phone, the list title opens a bottom sheet with every list and its number of items left.
+- Installable web app (iOS, Android), **light and dark mode** following the device setting.
+- Interface in **English or French**, chosen once per instance (`LISTES_LANG`).
+- Images for **amd64, arm64 and arm/v7** (Raspberry Pi 2 and later).
+
+Who sees what: each account has its private lists, visible only to itself. A shared list appears for
+every account on the instance, who can rename it and edit its items; its colour, sharing and
+deletion stay with its owner.
 
 ```mermaid
 flowchart TB
-  subgraph partagees["⇄ Partagées"]
-    C["Courses<br/><i>de Camille</i>"]
-    W["Week-end à Annecy<br/><i>de Sam</i>"]
+  subgraph shared["⇄ Shared"]
+    C["Groceries<br/><i>Camille's</i>"]
+    W["Weekend in Annecy<br/><i>Sam's</i>"]
   end
 
   Camille(["👤 Camille"])
   Sam(["👤 Sam"])
   Alex(["👤 Alex"])
 
-  subgraph privees["🔒 Privées"]
-    A["Aujourd'hui<br/><i>de Camille</i>"]
-    P["Projets 2027<br/><i>de Sam</i>"]
+  subgraph private["🔒 Private"]
+    A["Today<br/><i>Camille's</i>"]
+    P["Projects 2027<br/><i>Sam's</i>"]
   end
 
-  partagees <==> Camille
-  partagees <==> Sam
-  partagees <==> Alex
+  shared <==> Camille
+  shared <==> Sam
+  shared <==> Alex
   Camille <--> A
   Sam <--> P
 ```
 
-![Une liste partagée par un autre compte, en catégories : même liste, modifiable par les deux ; une catégorie dont tous les éléments sont cochés est rayée](docs/screenshots/liste-partagee.png)
+![A list shared by another account, with categories: the same list, editable by both; a category whose items are all checked is struck through](docs/screenshots/liste-partagee.png)
 
 <p align="center">
-  <img src="docs/screenshots/telephone.png" width="620" alt="Sur téléphone : la liste de courses en catégories, puis le panneau des listes ouvert en bas de l'écran, avec le nombre d'éléments à faire de chacune">
+  <img src="docs/screenshots/telephone.png" width="620" alt="On a phone: the grocery list with categories, then the list sheet open at the bottom of the screen, with the number of items left in each">
 </p>
 
-Captures faites sur des données inventées.
+Screenshots show the French interface, with made-up data.
 
-## Déploiement
+## Non-goals
 
-La CI publie l'image `ghcr.io/fileboss/giga-simple-lists` (amd64) : chaque tag `vX.Y.Z` donne
-`:vX.Y.Z` et `:X.Y.Z`, les versions à épingler ; `main` donne `:latest` et `:sha-…`, pour le dev
-seulement. Ce dépôt ne fournit que l'image : son `compose.yaml` ne sert qu'au dev local.
+The app does one thing. These are deliberately **not** planned, and pull requests adding them will
+be declined:
 
-Contrat du conteneur : uid 1000, base `/data/listes.db` (un seul fichier SQLite, à sauvegarder avec
-`sqlite3 .backup`), port 5240, `GET /healthz` (healthcheck intégré à l'image), `LISTES_ORIGIN`
-obligatoire. Il faut un reverse proxy qui sert l'appli en HTTPS : les cookies de session sont
-`Secure`. Les migrations de la base sont intégrées au binaire et s'appliquent au démarrage.
+- due dates, reminders, notifications, recurring tasks;
+- priorities, tags, notes, attachments, sub-tasks deeper than one category level;
+- a settings page: the few options (language, origin…) live in the environment;
+- a native mobile app: the installable web app is the app;
+- outgoing connections of any kind (no telemetry, no update check, no external fonts or CDN).
 
-## Comptes
+## Quick start
 
-Il n'y a pas d'inscription en ligne : les comptes se gèrent en ligne de commande.
+The image is `ghcr.io/fileboss/giga-simple-lists`. Each release `vX.Y.Z` is published as `:X.Y.Z`,
+`:X.Y` and `:X`; pin one of them. `:latest` follows `main` and is for development only.
+
+`compose.yaml`:
+
+```yaml
+services:
+  listes:
+    image: ghcr.io/fileboss/giga-simple-lists:2
+    restart: unless-stopped
+    user: "1000:1000"            # owner of ./data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    ports:
+      - "127.0.0.1:5240:5240"    # only the reverse proxy reaches it
+    volumes:
+      - ./data:/data
+    networks: [listes]
+    environment:
+      LISTES_ORIGIN: https://lists.example.com   # exact public URL
+      LISTES_LANG: en                            # or fr
+      # The published port arrives from the network gateway: trust its X-Forwarded-For.
+      LISTES_TRUSTED_PROXIES: 172.29.52.1
+      GOMEMLIMIT: 96MiB
+      TZ: Europe/Paris
+
+networks:
+  listes:
+    ipam:
+      config:
+        - subnet: 172.29.52.0/24
+          gateway: 172.29.52.1
+```
 
 ```sh
-docker compose exec listes listes user add <nom>       # affiche un mot de passe généré, une seule fois
-docker compose exec -T listes listes user add <nom> --password-stdin <<<'mot de passe choisi (15 caractères min.)'
-docker compose exec listes listes user reset <nom>     # nouveau mot de passe, sessions révoquées
-docker compose exec listes listes user list
-docker compose exec listes listes sessions revoke-all  # déconnecte tous les appareils
+mkdir -p data && sudo chown 1000:1000 data
+docker compose up -d
+docker compose exec listes listes user add alice   # prints a generated password, once
 ```
+
+Then put it behind a reverse proxy that serves it over HTTPS (see [Reverse proxy](#reverse-proxy)).
+Session cookies are `Secure`.
+
+Container contract: uid 1000, database `/data/listes.db` (a single SQLite file), port 5240,
+`GET /healthz` (healthcheck built into the image), `LISTES_ORIGIN` required. Database migrations are
+built into the binary and run at startup.
+
+### Trying it on a local network, without HTTPS
+
+Over plain `http://192.168.x.x:5240`, browsers drop `Secure` cookies and sign-in silently fails.
+`http://localhost` works out of the box. For any other HTTP address, the app refuses to start and
+says why, unless you explicitly opt in:
+
+```yaml
+      LISTES_ORIGIN: http://192.168.1.10:5240
+      LISTES_INSECURE_HTTP: "true"
+```
+
+Cookies then lose their `Secure` flag and `__Host-` prefix: anyone on the network can read them.
+Keep this to a trusted LAN. Browsers also disable the service worker over HTTP, so the app does not
+open offline and cannot be installed; offline changes are still queued while the page stays open.
+The option is refused with an `https://` origin.
+
+## Accounts
+
+There is no sign-up page: accounts are managed from the command line.
+
+```sh
+docker compose exec listes listes user add <name>       # prints a generated password, once
+docker compose exec -T listes listes user add <name> --password-stdin <<<'chosen password (15 characters min.)'
+docker compose exec listes listes user reset <name>     # new password, sessions revoked
+docker compose exec listes listes user list
+docker compose exec listes listes sessions revoke-all   # signs out every device
+```
+
+## Backup
+
+The image has no shell and no `sqlite3`; the binary makes a consistent copy itself, even while the
+server is running:
+
+```sh
+docker compose exec listes listes backup                 # /data/listes-backup-<date>.db
+docker compose exec listes listes backup /data/today.db  # never overwrites an existing file
+```
+
+The copy is a complete SQLite database: to restore, stop the container and replace `listes.db`
+with it. `sqlite3 listes.db ".backup copy.db"` from the host works too.
 
 ## Reverse proxy
 
-L'appli doit être servie à l'adresse exacte de `LISTES_ORIGIN`. Le reverse proxy doit :
+The app must be served at the exact address of `LISTES_ORIGIN`. The reverse proxy must:
 
-- **ne pas mettre en tampon** le flux temps réel (`/api/events`, Server-Sent Events) ;
-- **remplacer** `X-Forwarded-For` par l'IP du client (l'appli en lit la dernière valeur, pour
-  limiter les tentatives de connexion par IP) ;
-- ajouter HSTS, `X-Content-Type-Options: nosniff` et `Referrer-Policy`. L'appli pose elle-même la
-  CSP, COOP, CORP, `Permissions-Policy`, `X-Frame-Options` et `Cache-Control`.
+- **not buffer** the real-time stream (`/api/events`, Server-Sent Events);
+- **replace** `X-Forwarded-For` with the client IP (the app reads its last value, to rate-limit
+  sign-in attempts per IP);
+- add HSTS, `X-Content-Type-Options: nosniff` and `Referrer-Policy`. The app sets the CSP, COOP,
+  CORP, `Permissions-Policy`, `X-Frame-Options` and `Cache-Control` itself.
 
-Caddy (le certificat HTTPS est automatique, et Caddy remplace déjà `X-Forwarded-For`) :
+Caddy (automatic HTTPS certificate, and Caddy already replaces `X-Forwarded-For`):
 
 ```caddyfile
-listes.example.com {
+lists.example.com {
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options nosniff
@@ -108,7 +195,7 @@ listes.example.com {
 }
 ```
 
-nginx :
+nginx:
 
 ```nginx
 location / {
@@ -120,35 +207,37 @@ location / {
 }
 ```
 
-Si le reverse proxy tourne sur une autre machine (par un tunnel ou un VPN), il faut qu'il atteigne
-le port `127.0.0.1:5240` de l'hôte de l'appli par un relais local, et que personne d'autre ne puisse
-joindre ce relais : toute connexion qui arrive par là est crue sur son `X-Forwarded-For`.
+If the reverse proxy runs on another machine (through a tunnel or a VPN), it must reach port
+`127.0.0.1:5240` of the app host through a local relay, and nobody else must be able to reach that
+relay: any connection arriving that way is trusted for its `X-Forwarded-For`.
 
 ## Configuration
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Purpose |
 |---|---|---|
-| `LISTES_ORIGIN` | (obligatoire) | URL publique ; seule origine acceptée pour les requêtes qui modifient |
-| `LISTES_TRUSTED_PROXIES` | (aucune) | IP, séparées par des virgules, dont `X-Forwarded-For` est lu, en plus de `127.0.0.1` : la passerelle du réseau Docker par laquelle arrive le port publié |
-| `LISTES_DB` | `/data/listes.db` | chemin de la base |
-| `LISTES_ADDR` | `:5240` | adresse d'écoute |
-| `TZ` | (UTC) | fuseau horaire (horodatage des journaux) |
-| `GOMEMLIMIT` | (aucune) | à régler sous la limite mémoire du conteneur (ex. `96MiB` pour 128 Mo) |
+| `LISTES_ORIGIN` | (required) | Public URL; the only origin accepted for requests that modify data |
+| `LISTES_LANG` | `en` | Language of the interface, error messages, command line and logs: `en` or `fr` |
+| `LISTES_TRUSTED_PROXIES` | (none) | Comma-separated IPs whose `X-Forwarded-For` is read, in addition to `127.0.0.1`: the Docker network gateway the published port arrives through |
+| `LISTES_INSECURE_HTTP` | `false` | Allow an `http://` origin other than localhost (trusted LAN only, see above) |
+| `LISTES_DB` | `/data/listes.db` | Database path |
+| `LISTES_ADDR` | `:5240` | Listen address |
+| `TZ` | (UTC) | Time zone (log timestamps) |
+| `GOMEMLIMIT` | (none) | Set below the container memory limit (e.g. `96MiB` for 128 MB) |
 
-### Limites
+### Limits
 
 | | |
 |---|---|
-| Listes par compte | 200 |
-| Éléments par liste | 2 000 |
-| Texte d'un élément / nom de liste | 500 / 80 caractères |
-| Flux temps réel ouverts | 64 au total, 4 par session |
-| Sessions | 90 jours sans visite, 180 jours au plus |
-| Base de données | 50 Mo |
+| Lists per account | 200 |
+| Items per list | 2,000 |
+| Item text / list name | 500 / 80 characters |
+| Open real-time streams | 64 in total, 4 per session |
+| Sessions | 90 days without a visit, 180 days at most |
+| Database | 50 MB |
 
-## Développer
+## Development
 
-Sans Go installé, tout passe par Docker :
+Without Go installed, everything goes through Docker:
 
 ```sh
 cd app
@@ -156,7 +245,7 @@ docker run --rm -v "$PWD:/src" -w /src golang:1.27-alpine sh -c 'go vet ./... &&
 docker run --rm -v "$PWD:/src" -w /src golang:1.27-alpine go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
-Lancer en local (le navigateur accepte les cookies `Secure` sur `localhost`) :
+Run locally (browsers accept `Secure` cookies on `localhost`):
 
 ```sh
 mkdir -p data && chmod 777 data
@@ -165,42 +254,47 @@ docker compose exec listes listes user add alice
 open http://localhost:5240
 ```
 
-Chaque version est un tag (`v1.0.0`, `v1.0.1`…), publié comme image par la CI. Dependabot propose
-chaque semaine les mises à jour des images de base, des dépendances Go et des actions GitHub ; la CI
-lance `gofmt`, `go vet`, `go test -race`, `govulncheck` (aussi chaque nuit) et vérifie que l'image
-fait moins de 20 Mo avant de la publier.
+The repository's `compose.yaml` is for local development only. Every release is a tag (`v1.0.0`,
+`v1.0.1`…), published as an image by CI. Dependabot proposes weekly updates of base images, Go
+dependencies and GitHub Actions; CI runs `gofmt`, `go vet`, `go test -race`, `govulncheck` (also
+nightly) and checks that each platform's image is under 20 MB before publishing it.
 
-## Points de conception
+Code comments are in French. Translations live in [`app/i18n.go`](app/i18n.go); a test checks that
+every language has every key.
 
-- **Accès** : une seule règle, `visibleTo` (propriétaire, ou liste partagée), et un seul passage
-  obligé, `accessList` / `accessItem` (`store.go`), pour toutes les routes. Le flux SSE applique
-  `visibleTo` à chaque destinataire, sur l'état de la liste après la modification.
-  Le droit sur un élément vient de sa liste, retrouvée côté serveur. Liste privée d'un autre : 404.
-- **Identifiants** : 128 bits. À la création, ils sont dérivés d'un nonce aléatoire du client
-  (`sha256(utilisateur, nonce)`). Le client connaît l'identifiant tout de suite (mises à jour
-  optimistes, file hors ligne), un renvoi est idempotent, et un autre utilisateur ne peut pas
-  produire le même identifiant.
-- **Temps réel** : SSE. Les écritures et la publication des événements partagent un même verrou,
-  donc l'ordre des événements suit celui des commits et la visibilité est évaluée sur l'état exact.
-  Une liste qui redevient privée n'envoie aux autres qu'un retrait (`{id, reason}`).
-- **Hors ligne** : un service worker (`/sw.js`) sert la page et ses fichiers depuis le réseau
-  d'abord, et depuis son cache seulement si le réseau ne répond pas (erreur, 502-504, ou rien
-  sous 4 s) : jamais de version périmée en ligne. L'API et le flux SSE ne passent pas par lui.
-  `app.js` garde une copie des listes (`localStorage`), affichée à l'ouverture puis remplacée par
-  l'état du serveur. La déconnexion efface la page en cache et cette copie ; une redirection vers
-  `/login` (session expirée) efface aussi la page.
-  File d'opérations dans le navigateur (`localStorage`), renvoyée dans l'ordre.
-  Chaque opération est idempotente ; « Supprimer les cochés » envoie les éléments vus cochés, pour ne
-  pas supprimer au renvoi ce qu'un autre a coché entre-temps.
-  Délai de 15 s par requête, ping SSE toutes les 20 s, surveillé côté client.
-- **Sécurité** (choix et raisons : [SECURITY.md](SECURITY.md)) : connexion par mot de passe seul (Argon2id, paramètres OWASP), temps de réponse
-  constant et message unique ; blocage par IP, simple ralentissement par compte (plafonné à 1 min,
-  pour qu'un tiers ne puisse pas bloquer un compte), stockés en base ; cookie `__Host-session`
-  (seul le hash est en base), Origin + Sec-Fetch-Site + jeton CSRF, CSP sans inline.
-  `X-Forwarded-For` n'est lu que depuis 127.0.0.1 ou une adresse de `LISTES_TRUSTED_PROXIES`.
-- **Isolation** (une faille dans l'appli ne doit mener nulle part) : distroless sans shell,
-  non-root, base plafonnée à 50 Mo (507 « Stockage plein » au-delà, lecture intacte), journal
-  applicatif limité à une ligne par minute pour un même message. Le déploiement doit ajouter
-  `cap_drop: ALL`, `no-new-privileges`, `read_only`, un seul volume, `pids_limit`, `nofile`, des
-  journaux bornés, un port publié sur `127.0.0.1`, et bloquer toute connexion sortante : l'appli
-  n'en a besoin d'aucune.
+## Design notes
+
+- **Access**: a single rule, `visibleTo` (owner, or shared list), and a single gate,
+  `accessList` / `accessItem` (`store.go`), for every route. The SSE stream applies `visibleTo` to
+  each recipient, on the list's state after the change. Rights on an item come from its list, looked
+  up server-side. Someone else's private list: 404.
+- **Identifiers**: 128 bits. On creation, they are derived from a random client nonce
+  (`sha256(user, nonce)`). The client knows the identifier immediately (optimistic updates, offline
+  queue), a resend is idempotent, and another user cannot produce the same identifier.
+- **Real time**: SSE. Writes and event publication share one lock, so event order follows commit
+  order and visibility is evaluated on the exact state. A list that becomes private again only sends
+  others a removal (`{id, reason}`).
+- **Offline**: a service worker (`/sw.js`) serves the page and its files network-first, and from
+  its cache only if the network does not answer (error, 502-504, or nothing within 4 s): never a
+  stale version while online. The API and the SSE stream do not go through it. `app.js` keeps a copy
+  of the lists (`localStorage`), shown at startup and then replaced by the server state. Signing out
+  clears the cached page and that copy; a redirect to `/login` (expired session) clears the page too.
+  Operations are queued in the browser (`localStorage`) and resent in order. Every operation is
+  idempotent; "Delete checked" sends the items seen as checked, so a resend does not delete what
+  someone else checked in the meantime. 15 s timeout per request, SSE ping every 20 s, watched by
+  the client.
+- **Security** (choices and reasons, in French: [SECURITY.md](SECURITY.md)): password-only sign-in
+  (Argon2id, OWASP parameters), constant response time and a single message; per-IP blocking,
+  per-account slowdown only (capped at 1 min, so a third party cannot lock an account out), stored
+  in the database; `__Host-session` cookie (only its hash is stored), Origin + Sec-Fetch-Site + CSRF
+  token, CSP without inline code. `X-Forwarded-For` is only read from 127.0.0.1 or an address in
+  `LISTES_TRUSTED_PROXIES`.
+- **Isolation** (a flaw in the app must lead nowhere): distroless without a shell, non-root,
+  database capped at 50 MB (507 "Storage full" beyond, reads intact), application log limited to one
+  line per minute for the same message. The deployment should add `cap_drop: ALL`,
+  `no-new-privileges`, `read_only`, a single volume, `pids_limit`, `nofile`, bounded logs, a port
+  published on `127.0.0.1`, and block every outgoing connection: the app needs none.
+
+## License
+
+MIT

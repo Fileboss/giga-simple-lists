@@ -1,7 +1,7 @@
 # Sécurité
 
 Ce document explique les choix de sécurité de l'appli et leurs raisons. Le fonctionnement détaillé
-est dans le [README](README.md) (« Points de conception ») et dans le code.
+est dans le [README](README.fr.md) (« Points de conception ») et dans le code.
 
 ## Signaler une faille
 
@@ -47,6 +47,12 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
 - Jeton aléatoire de 256 bits dans le cookie ; **seul son SHA-256 est en base** : une copie de la
   base ne donne accès à aucune session.
 - Cookie `__Host-session` : `Secure`, `HttpOnly`, `Path=/`, sans domaine.
+- Exception, sur demande explicite seulement : `LISTES_INSECURE_HTTP=true` avec une origine
+  `http://` hors localhost (essai sur un réseau local). Le navigateur refuserait un cookie `Secure`
+  ou `__Host-` reçu en HTTP : les cookies deviennent `listes_session` et `listes_login`, sans
+  `Secure`, et circulent en clair. Sans l'option, une origine `http://` hors localhost empêche le
+  démarrage, et l'option est refusée avec une origine `https://` : une instance HTTPS ne peut pas
+  perdre `Secure` par erreur. Le CSRF (Origin, Sec-Fetch-Site, jeton) ne change pas.
 - **`SameSite=Lax`, pas `Strict`.** Ouverte depuis l'écran d'accueil (iOS surtout), l'appli démarre
   par une navigation que le navigateur traite comme venue d'un autre site : un cookie `Strict` n'y
   est pas envoyé, et l'appli redemandait la connexion à chaque ouverture. `Lax` n'envoie le cookie,
