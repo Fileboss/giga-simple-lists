@@ -162,6 +162,16 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/items/{id}", a.authedAPI(a.apiUpdateItem))
 	mux.HandleFunc("DELETE /api/items/{id}", a.authedAPI(a.apiDeleteItem))
 	mux.HandleFunc("POST /api/items/{id}/move", a.authedAPI(a.apiMoveItem))
+	mux.HandleFunc("GET /api/accounts", a.authedAPI(a.apiAccounts))
+	mux.HandleFunc("GET /api/lists/{id}/public-link", a.authedAPI(a.apiGetPublicLink))
+	mux.HandleFunc("POST /api/lists/{id}/public-link", a.authedAPI(a.apiCreatePublicLink))
+	mux.HandleFunc("DELETE /api/lists/{id}/public-link", a.authedAPI(a.apiDeletePublicLink))
+
+	// Lien public : sans compte, cocher et décocher seulement.
+	mux.HandleFunc("GET /s/{token}", a.publicPage)
+	mux.HandleFunc("GET /s/{token}/state", a.publicState)
+	mux.HandleFunc("GET /s/{token}/events", a.publicEvents)
+	mux.HandleFunc("POST /s/{token}/items/{id}", a.publicCheck)
 	return securityHeaders(limitBody(mux))
 }
 
@@ -174,7 +184,7 @@ const csp = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 's
 const permissionsPolicy = "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), " +
 	"fullscreen=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), microphone=(), " +
 	"midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), " +
-	"usb=(), web-share=(), xr-spatial-tracking=()"
+	"usb=(), web-share=(self), xr-spatial-tracking=()"
 
 // securityHeaders : à compléter au reverse proxy par HSTS, nosniff et Referrer-Policy.
 func securityHeaders(next http.Handler) http.Handler {

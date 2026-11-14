@@ -110,19 +110,40 @@ couvrent les navigateurs anciens et les erreurs de configuration.
 
 ### Accès aux listes
 
-- **Une seule règle** (`visibleTo` : propriétaire, ou liste partagée) et **un seul passage obligé**
+- **Une seule règle** (`visibleTo` : propriétaire, liste partagée avec tout le monde, ou membre de
+  la liste) et **un seul passage obligé**
   (`accessList` / `accessItem`) pour toutes les routes et le flux temps réel : pas de vérification
   réécrite route par route, donc pas d'oubli possible sur une route.
 - Le droit sur un élément vient de sa liste, retrouvée côté serveur ; un identifiant de liste
   envoyé par le client n'est jamais cru.
 - Liste privée d'un autre : **404**, pas 403, pour ne pas révéler qu'elle existe.
 - Identifiants de **128 bits**, impossibles à deviner.
+- Quand le partage change, chaque compte est évalué avant et après : qui gagne l'accès reçoit la
+  liste, qui le perd reçoit un simple retrait, sans contenu.
 
+### Lien public pour cocher seulement
+
+- Un jeton de 256 bits dans l'URL (`/s/<jeton>`) donne accès à **une liste**, pour cocher et
+  décocher ses éléments, rien d'autre : aucune route ne permet à un visiteur d'ajouter, modifier,
+  déplacer ou supprimer un élément, ni de lire quoi que ce soit sur les comptes, les membres ou le
+  partage (la vue publique et ses événements temps réel ne portent que les éléments, le nom et la
+  couleur).
+- Le jeton est gardé en clair, pour que le propriétaire puisse recopier le lien à tout moment. Il ne
+  donne accès qu'à ce que la base contient déjà en clair. Remplacer le lien (ou le couper) invalide
+  l'ancien jeton et coupe aussitôt les flux temps réel de ses visiteurs.
+- Pas de session, donc pas de jeton CSRF : les écritures exigent l'`Origin` du site (et
+  `Sec-Fetch-Site` s'il est présent) et un corps JSON, qui impose une requête préalable CORS depuis
+  tout autre site.
+- Au plus 120 écritures par minute et par IP ; les flux temps réel anonymes ont leur propre plafond
+  (32 au total, 4 par IP), distinct de celui des comptes, qui ne peuvent donc jamais en manquer.
+- `Referrer-Policy: same-origin` et `X-Robots-Tag: noindex` : le jeton ne sort pas du site et la
+  page n'est pas indexée.
 ### Navigateur
 
 - **CSP stricte, sans script ni style inline**, aucune ressource externe (ni CDN, ni police).
   Avec l'échappement automatique de `html/template`, une injection de script ne s'exécute pas.
-- En-têtes posés par l'appli : COOP, CORP, `Permissions-Policy` qui refuse tout,
+- En-têtes posés par l'appli : COOP, CORP, `Permissions-Policy` qui refuse tout sauf le partage
+  natif (`web-share=(self)`, pour envoyer le lien public),
   `X-Frame-Options: DENY`, `Cache-Control: no-store` sur les pages connectées. HSTS, `nosniff` et
   `Referrer-Policy` sont à ajouter au reverse proxy (README).
 - **Hors ligne** : le service worker passe toujours d'abord par le réseau, et n'utilise son cache

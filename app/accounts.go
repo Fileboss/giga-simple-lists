@@ -269,19 +269,28 @@ func deleteUser(tx *sql.Tx, userID string) (shared []*List, sessions [][]byte, e
 			return nil, nil, errLastAdmin
 		}
 	}
-	rows, err := tx.Query(listSelect+` WHERE l.owner_id = ? AND l.shared = 1`, userID)
+	rows, err := tx.Query(listSelect+` WHERE l.owner_id = ?`, userID)
 	if err != nil {
 		return nil, nil, err
 	}
+	var owned []*List
 	for rows.Next() {
 		l, err := scanList(rows)
 		if err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
-		shared = append(shared, l)
+		owned = append(owned, l)
 	}
 	rows.Close()
+	for _, l := range owned {
+		if err := attachMembers(tx, l); err != nil {
+			return nil, nil, err
+		}
+		if l.isShared() || l.Public {
+			shared = append(shared, l)
+		}
+	}
 	if sessions, err = sessionHashes(tx, userID, nil); err != nil {
 		return nil, nil, err
 	}

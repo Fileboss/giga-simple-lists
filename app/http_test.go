@@ -227,8 +227,10 @@ func TestSecurityHeaders(t *testing.T) {
 				t.Errorf("%s %s : %q", path, k, got)
 			}
 		}
+		// Tout est refusé, sauf le partage natif (bouton « Envoyer le lien » du lien public).
 		pp := w.Header().Get("Permissions-Policy")
-		if !strings.Contains(pp, "camera=()") || !strings.Contains(pp, "geolocation=()") || strings.Contains(pp, "self") {
+		if !strings.Contains(pp, "camera=()") || !strings.Contains(pp, "geolocation=()") ||
+			strings.Contains(strings.Replace(pp, "web-share=(self)", "", 1), "self") {
 			t.Errorf("%s Permissions-Policy : %q", path, pp)
 		}
 	}
@@ -414,7 +416,7 @@ func TestDatabasePragmas(t *testing.T) {
 	h2 := newHarnessAt(t, h.dir)
 	var v int
 	h2.db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 4 {
+	if v != 5 {
 		t.Fatalf("user_version=%d", v)
 	}
 	var maxPages int

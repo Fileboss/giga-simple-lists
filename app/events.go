@@ -13,6 +13,11 @@ type event struct {
 	name string
 	data []byte
 	to   func(userID string) bool
+	// Lien public : la liste concernée, et ce que reçoivent ses visiteurs anonymes (nil :
+	// rien). Seuls les éléments, le nom et la couleur leur sont envoyés, jamais les
+	// comptes, les membres ou le partage.
+	listID string
+	public []byte
 }
 
 // Noms des événements SSE (écoutés par app.js, vérifié par TestEventNamesInJS) et
@@ -31,7 +36,35 @@ const (
 
 func newEvent(name string, v any, to func(string) bool) event {
 	b, _ := json.Marshal(v)
-	return event{name: name, data: b, to: to}
+	ev := event{name: name, data: b, to: to}
+	switch x := v.(type) {
+	case *Item:
+		ev.listID, ev.public = x.ListID, b
+	case itemRemoval:
+		ev.listID, ev.public = x.ListID, b
+	case itemsMoved:
+		ev.listID, ev.public = x.ListID, b
+	case itemsRemoved:
+		ev.listID, ev.public = x.ListID, b
+	case removal:
+		if x.Reason == reasonDeleted { // la liste n'existe plus : la page publique le dit
+			ev.listID, ev.public = x.ID, b
+		}
+	}
+	return ev
+}
+
+// publicList : ce qu'un visiteur du lien public voit de la liste.
+type publicList struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+	Owner string `json:"owner_name"`
+	Items []Item `json:"items,omitempty"`
+}
+
+func publicListEvent(l *List) event {
+	b, _ := json.Marshal(publicList{Name: l.Name, Color: l.Color, Owner: l.OwnerName})
+	return event{name: evList, to: func(string) bool { return false }, listID: l.ID, public: b}
 }
 
 func toViewersOf(l *List) func(string) bool {
@@ -39,28 +72,23 @@ func toViewersOf(l *List) func(string) bool {
 	return func(uid string) bool { return visibleTo(&cp, uid) }
 }
 
-// Événements d'une liste qui change. Le passage en privé n'envoie aux autres qu'un
-// retrait, sans contenu ; le passage en partagé leur envoie la liste complète.
+// Événements d'une liste qui change, selon ce que chacun voyait avant et voit après :
+// qui la gardait reçoit les nouvelles métadonnées, qui la découvre la liste complète
+// (items), qui la perd un simple retrait, sans contenu. Les visiteurs du lien public
+// reçoivent nom et couleur.
 func listChangedEvents(before, after *List, items []Item) []event {
 	meta := *after
 	meta.Items = nil
-	switch {
-	case before.Shared && !after.Shared:
-		owner := after.OwnerID
-		return []event{
-			newEvent(evList, meta, toViewersOf(after)),
-			newEvent(evListRemoved, removal{ID: after.ID, Reason: reasonUnshared}, func(uid string) bool { return uid != owner }),
-		}
-	case !before.Shared && after.Shared:
-		full := meta
-		full.Items = items
-		owner := after.OwnerID
-		return []event{
-			newEvent(evList, meta, func(uid string) bool { return uid == owner }),
-			newEvent(evList, full, func(uid string) bool { return uid != owner && visibleTo(after, uid) }),
-		}
-	default:
-		return []event{newEvent(evList, meta, toViewersOf(after))}
+	full := meta
+	full.Items = items
+	b, a := *before, *after
+	return []event{
+		newEvent(evList, meta, func(uid string) bool { return visibleTo(&b, uid) && visibleTo(&a, uid) }),
+		newEvent(evList, full, func(uid string) bool { return !visibleTo(&b, uid) && visibleTo(&a, uid) }),
+		newEvent(evListRemoved, removal{ID: after.ID, Reason: reasonUnshared}, func(uid string) bool {
+			return visibleTo(&b, uid) && !visibleTo(&a, uid)
+		}),
+		publicListEvent(after),
 	}
 }
 
@@ -88,6 +116,8 @@ type itemsRemoved struct {
 
 type subscriber struct {
 	userID  string
+	listID  string // visiteur du lien public de cette liste (userID et session vides)
+	ip      string
 	session string // hash du jeton de session
 	ch      chan event
 	done    chan struct{}
@@ -104,6 +134,10 @@ type hub struct {
 const (
 	maxStreamsPerSession = 4
 	maxStreams           = 64
+	// Visiteurs anonymes des liens publics : un plafond à part, pour qu'ils ne privent
+	// jamais les comptes de leurs flux.
+	maxPublicStreams      = 32
+	maxPublicStreamsPerIP = 4
 )
 
 func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}} }
@@ -112,18 +146,54 @@ func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}} }
 func (h *hub) subscribe(userID string, sessionHash []byte) *subscriber {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	n := 0
+	total, sameSession := 0, 0
 	for s := range h.subs {
+		if s.listID == "" {
+			total++
+		}
 		if s.session == string(sessionHash) {
-			n++
+			sameSession++
 		}
 	}
-	if n >= maxStreamsPerSession || len(h.subs) >= maxStreams {
+	if sameSession >= maxStreamsPerSession || total >= maxStreams {
 		return nil
 	}
 	s := &subscriber{userID: userID, session: string(sessionHash), ch: make(chan event, 64), done: make(chan struct{})}
 	h.subs[s] = struct{}{}
 	return s
+}
+
+// subscribePublic : flux d'un visiteur du lien public d'une liste ; nil au-delà des plafonds.
+func (h *hub) subscribePublic(listID, ip string) *subscriber {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	total, sameIP := 0, 0
+	for s := range h.subs {
+		if s.listID != "" {
+			total++
+			if s.ip == ip {
+				sameIP++
+			}
+		}
+	}
+	if total >= maxPublicStreams || sameIP >= maxPublicStreamsPerIP {
+		return nil
+	}
+	s := &subscriber{listID: listID, ip: ip, ch: make(chan event, 64), done: make(chan struct{})}
+	h.subs[s] = struct{}{}
+	return s
+}
+
+// closeList coupe les flux publics d'une liste (lien révoqué ou remplacé).
+func (h *hub) closeList(listID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for s := range h.subs {
+		if s.listID == listID {
+			delete(h.subs, s)
+			s.close()
+		}
+	}
 }
 
 func (h *hub) unsubscribe(s *subscriber) {
@@ -140,11 +210,17 @@ func (h *hub) publish(evs ...event) {
 	defer h.mu.Unlock()
 	for _, ev := range evs {
 		for s := range h.subs {
-			if !ev.to(s.userID) {
+			out := ev
+			if s.listID != "" {
+				if ev.listID != s.listID || ev.public == nil {
+					continue
+				}
+				out.data = ev.public
+			} else if !ev.to(s.userID) {
 				continue
 			}
 			select {
-			case s.ch <- ev:
+			case s.ch <- out:
 			default:
 				delete(h.subs, s)
 				s.close()

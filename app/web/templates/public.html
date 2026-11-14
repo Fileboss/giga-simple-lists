@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="same-origin">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}} · {{t "app.name"}}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
+{{if .List}}<script id="messages" type="application/json">{{.Messages}}</script>
+<script src="/static/public.js" defer></script>{{end}}
+</head>
+{{if .List}}
+<body class="public" data-token="{{.Token}}">
+<div class="notices">
+  <p id="toast" class="toast" role="status" hidden></p>
+  <p id="offline" class="offline" role="status" hidden>{{t "ui.offline"}}</p>
+</div>
+<main id="list" class="list c-{{.List.Color}}">
+  <div class="list-head"><h1 id="title" class="title public-title">{{.List.Name}}</h1></div>
+  <p id="note" class="owner-note">{{tf "public.note" .List.OwnerName}}</p>
+  <ul id="items" class="items"></ul>
+  <p id="gone" class="public-gone" hidden>{{t "public.gone"}}</p>
+</main>
+<footer class="foot"><span>{{t "app.name"}}</span></footer>
+</body>
+{{else}}
+<body class="page">
+<main class="page-box narrow">
+  <h1>{{t "public.goneTitle"}}</h1>
+  <p class="muted">{{t "public.gone"}}</p>
+</main>
+</body>
+{{end}}
+</html>

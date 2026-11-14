@@ -233,6 +233,18 @@ func openSSE(t *testing.T, srvURL string, s *testSession) *sseClient {
 	t.Helper()
 	req, _ := http.NewRequest("GET", srvURL+"/api/events", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: s.Token})
+	return openStream(t, req)
+}
+
+// openPublicSSE : flux d'un visiteur anonyme du lien public.
+func openPublicSSE(t *testing.T, srvURL, token string) *sseClient {
+	t.Helper()
+	req, _ := http.NewRequest("GET", srvURL+"/s/"+token+"/events", nil)
+	return openStream(t, req)
+}
+
+func openStream(t *testing.T, req *http.Request) *sseClient {
+	t.Helper()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
