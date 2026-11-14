@@ -120,14 +120,19 @@ old browsers and configuration mistakes.
 - A 256-bit token in the URL (`/s/<token>`) gives access to **one list**, to check and uncheck
   its items, and nothing else: no route lets a visitor add, edit, move or delete an item, or read
   anything about accounts, members or sharing (the public view and its real-time events only carry
-  the items, the name and the colour).
+  the items, the name and the colour; not even the owner's name, which is their sign-in name).
 - The token is stored in clear text, so the owner can copy the link again at any time. It only
   gives access to what the database already holds in clear text. Replacing the link (or turning it
-  off) invalidates the old token and cuts its visitors' real-time streams immediately.
+  off) invalidates the old token and cuts its visitors' real-time streams immediately: under the
+  write lock, so no change can reach them after the new token is committed, and a stream opened
+  during the change is checked again once subscribed.
 - No session, so no CSRF token: writes require the site's `Origin` (and `Sec-Fetch-Site` when
   present) and a JSON body, which forces a CORS preflight from any other site.
-- At most 120 writes per minute per IP; anonymous real-time streams have their own cap (32 in
-  total, 4 per IP), separate from accounts', so visitors can never take the accounts' streams.
+- At most 120 writes per minute per IP; anonymous real-time streams have their own caps (64 in
+  total, 16 per link, 8 per IP), separate from accounts', so visitors can never take the accounts'
+  streams, and someone holding one link can only saturate that link. An IPv6 address counts as its
+  whole /64. Behind a reverse proxy, these limits rely on `LISTES_TRUSTED_PROXIES`: without it,
+  every visitor shares the proxy's IP.
 - `Referrer-Policy: same-origin` and `X-Robots-Tag: noindex`: the token does not leave the site and
   the page is not indexed.
 ### Browser

@@ -58,12 +58,11 @@ func newEvent(name string, v any, to func(string) bool) event {
 type publicList struct {
 	Name  string `json:"name"`
 	Color string `json:"color"`
-	Owner string `json:"owner_name"`
 	Items []Item `json:"items,omitempty"`
 }
 
 func publicListEvent(l *List) event {
-	b, _ := json.Marshal(publicList{Name: l.Name, Color: l.Color, Owner: l.OwnerName})
+	b, _ := json.Marshal(publicList{Name: l.Name, Color: l.Color})
 	return event{name: evList, to: func(string) bool { return false }, listID: l.ID, public: b}
 }
 
@@ -136,8 +135,11 @@ const (
 	maxStreams           = 64
 	// Visiteurs anonymes des liens publics : un plafond à part, pour qu'ils ne privent
 	// jamais les comptes de leurs flux.
-	maxPublicStreams      = 32
-	maxPublicStreamsPerIP = 4
+	// Par IP (réseau /64 en IPv6) : une famille derrière une même box ; par lien : quiconque
+	// a un lien ne peut saturer que celui-là.
+	maxPublicStreams        = 64
+	maxPublicStreamsPerIP   = 8
+	maxPublicStreamsPerList = 16
 )
 
 func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}} }
@@ -167,16 +169,19 @@ func (h *hub) subscribe(userID string, sessionHash []byte) *subscriber {
 func (h *hub) subscribePublic(listID, ip string) *subscriber {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	total, sameIP := 0, 0
+	total, sameIP, sameList := 0, 0, 0
 	for s := range h.subs {
 		if s.listID != "" {
 			total++
 			if s.ip == ip {
 				sameIP++
 			}
+			if s.listID == listID {
+				sameList++
+			}
 		}
 	}
-	if total >= maxPublicStreams || sameIP >= maxPublicStreamsPerIP {
+	if total >= maxPublicStreams || sameIP >= maxPublicStreamsPerIP || sameList >= maxPublicStreamsPerList {
 		return nil
 	}
 	s := &subscriber{listID: listID, ip: ip, ch: make(chan event, 64), done: make(chan struct{})}

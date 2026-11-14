@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -112,9 +113,13 @@ func TestPublicLink(t *testing.T) {
 	if w.Code != http.StatusOK || w.Header().Get("X-Robots-Tag") == "" || w.Header().Get("Referrer-Policy") != "same-origin" {
 		t.Fatalf("page : %d %v", w.Code, w.Header())
 	}
-	// L'état ne dit rien des comptes ni du partage.
+	// Ni la page ni l'état ne disent quoi que ce soit des comptes (le nom du propriétaire
+	// est son identifiant de connexion) ni du partage.
+	if strings.Contains(w.Body.String(), "alice") {
+		t.Error("page publique : nom du propriétaire présent")
+	}
 	st := h.anon("GET", "/s/"+token+"/state", nil).Body.String()
-	for _, leak := range []string{alice.User.ID, "members", "shared", "owner_id", "public"} {
+	for _, leak := range []string{alice.User.ID, "alice", "owner", "members", "shared", "public"} {
 		if strings.Contains(st, leak) {
 			t.Errorf("état public : %q présent dans %s", leak, st)
 		}
@@ -231,7 +236,7 @@ func TestPublicLimits(t *testing.T) {
 		t.Fatalf("au-delà de la limite : %d", c)
 	}
 
-	// Flux anonymes : plafond par IP, sans toucher aux flux des comptes.
+	// Flux anonymes : plafond par IP, puis par lien, sans toucher aux flux des comptes.
 	for i := 0; i < maxPublicStreamsPerIP; i++ {
 		if h.app.hub.subscribePublic(l.ID, "198.51.100.1") == nil {
 			t.Fatal("flux refusé sous le plafond")
@@ -239,6 +244,17 @@ func TestPublicLimits(t *testing.T) {
 	}
 	if h.app.hub.subscribePublic(l.ID, "198.51.100.1") != nil {
 		t.Fatal("plafond par IP dépassé")
+	}
+	for i := maxPublicStreamsPerIP; i < maxPublicStreamsPerList; i++ {
+		if h.app.hub.subscribePublic(l.ID, fmt.Sprintf("2001:db8:%x::1/64", i)) == nil {
+			t.Fatal("flux refusé sous le plafond par lien")
+		}
+	}
+	if h.app.hub.subscribePublic(l.ID, "2001:db8:ffff::/64") != nil {
+		t.Fatal("plafond par lien dépassé")
+	}
+	if h.app.hub.subscribePublic("autre-liste", "2001:db8:ffff::/64") == nil {
+		t.Fatal("un lien saturé a privé les autres liens")
 	}
 	if h.app.hub.subscribe(alice.User.ID, []byte("session")) == nil {
 		t.Fatal("les flux anonymes ont privé un compte du sien")
@@ -260,5 +276,35 @@ func TestPublicListDeleted(t *testing.T) {
 	}
 	if h.anon("GET", "/s/"+token, nil).Code != http.StatusNotFound {
 		t.Fatal("page d'une liste supprimée")
+	}
+}
+
+// En IPv6, tout un /64 compte comme une seule IP.
+func TestIPBucket(t *testing.T) {
+	for in, want := range map[string]string{
+		"198.51.100.7":            "198.51.100.7",
+		"2001:db8:1:2:aaaa::1":    "2001:db8:1:2::/64",
+		"2001:db8:1:2:bbbb::9999": "2001:db8:1:2::/64",
+		"pas-une-ip":              "pas-une-ip",
+	} {
+		if got := ipBucket(in); got != want {
+			t.Errorf("ipBucket(%q) = %q, attendu %q", in, got, want)
+		}
+	}
+}
+
+// Limiteur plein : les nouvelles clés sont refusées, les compteurs existants restent.
+func TestRateLimiterFull(t *testing.T) {
+	freezeTime(t)
+	rl := rateLimiter{counts: map[string]int{}}
+	for i := 0; i < maxRateKeys; i++ {
+		rl.allow(fmt.Sprint(i), 2)
+	}
+	if rl.allow("nouvelle", 2) {
+		t.Fatal("nouvelle clé acceptée au-delà de maxRateKeys")
+	}
+	rl.allow("0", 2)
+	if rl.allow("0", 2) {
+		t.Fatal("limite remise à zéro")
 	}
 }

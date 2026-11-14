@@ -8,6 +8,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"net"
 	"net/http"
 	"regexp"
 	"sync"
@@ -70,7 +71,9 @@ func (a *App) setPublicToken(w http.ResponseWriter, r *http.Request, s *session,
 		writeErr(w, err)
 		return false
 	}
-	err = a.commitAndPublish(func(tx *sql.Tx) ([]event, error) {
+	// Les visiteurs de l'ancien lien sont coupés sous le verrou d'écriture, juste après le
+	// commit : aucune écriture ne peut encore leur être publiée.
+	err = a.commitAndPublishThen(func(tx *sql.Tx) ([]event, error) {
 		before, err := accessList(tx, s.UserID, id)
 		if err != nil {
 			return nil, err
@@ -84,12 +87,11 @@ func (a *App) setPublicToken(w http.ResponseWriter, r *http.Request, s *session,
 		after := *before
 		after.Public = token != ""
 		return listChangedEvents(before, &after, nil), nil
-	})
+	}, func() { a.hub.closeList(id) })
 	if err != nil {
 		writeErr(w, err)
 		return false
 	}
-	a.hub.closeList(id) // les visiteurs de l'ancien lien sont coupés
 	return true
 }
 
@@ -173,11 +175,14 @@ func (a *App) publicState(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, publicList{Name: l.Name, Color: l.Color, Owner: l.OwnerName, Items: items})
+	writeJSON(w, http.StatusOK, publicList{Name: l.Name, Color: l.Color, Items: items})
 }
 
 // Écritures anonymes : au plus publicWritesPerMinute par IP.
-const publicWritesPerMinute = 120
+const (
+	publicWritesPerMinute = 120
+	maxRateKeys           = 10000
+)
 
 var publicWrites = rateLimiter{counts: map[string]int{}}
 
@@ -191,7 +196,7 @@ func (a *App) publicCheck(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
 		return
 	}
-	if !publicWrites.allow(clientIP(r, a.cfg.TrustedProxies), publicWritesPerMinute) {
+	if !publicWrites.allow(ipBucket(clientIP(r, a.cfg.TrustedProxies)), publicWritesPerMinute) {
 		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyRequests")})
 		return
 	}
@@ -253,12 +258,22 @@ func (a *App) publicEvents(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	sub := a.hub.subscribePublic(l.ID, clientIP(r, a.cfg.TrustedProxies))
+	sub := a.hub.subscribePublic(l.ID, ipBucket(clientIP(r, a.cfg.TrustedProxies)))
 	if sub == nil {
 		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyStreams")})
 		return
 	}
 	defer a.hub.unsubscribe(sub)
+	// Lien révoqué ou remplacé entre la lecture ci-dessus et l'abonnement : closeList est
+	// déjà passé. On revérifie sous le verrou d'écriture : soit la révocation est déjà
+	// commitée (refus), soit son closeList viendra après et coupera ce flux.
+	a.writeMu.Lock()
+	cur, err := listByToken(a.db, token)
+	a.writeMu.Unlock()
+	if err != nil || cur.ID != l.ID {
+		writeErr(w, errNotFound)
+		return
+	}
 	a.stream(w, r, sub, func() bool {
 		cur, err := listByToken(a.db, token)
 		return err == nil && cur.ID == l.ID
@@ -266,6 +281,16 @@ func (a *App) publicEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+
+// ipBucket : l'IP pour les plafonds des visiteurs anonymes. En IPv6, un appareil dispose
+// de tout un /64 : c'est lui qui compte, pas chaque adresse.
+func ipBucket(ip string) string {
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() != nil {
+		return ip
+	}
+	return p.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
 
 // rateLimiter : compteur par clé sur une fenêtre fixe d'une minute, en mémoire.
 type rateLimiter struct {
@@ -278,10 +303,13 @@ func (rl *rateLimiter) allow(key string, max int) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	t := now()
-	if t.Sub(rl.window) >= time.Minute || len(rl.counts) > 10000 {
+	if t.Sub(rl.window) >= time.Minute {
 		rl.window, rl.counts = t, map[string]int{}
 	}
-	if rl.counts[key] >= max {
+	// Mémoire bornée : au-delà de maxRateKeys clés dans la minute, les nouvelles sont
+	// refusées (tout remettre à zéro annulerait la limite pour tout le monde).
+	_, known := rl.counts[key]
+	if rl.counts[key] >= max || (!known && len(rl.counts) >= maxRateKeys) {
 		return false
 	}
 	rl.counts[key]++
