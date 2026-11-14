@@ -1,4 +1,4 @@
-// Listes : rendu, mises à jour optimistes, file d'attente hors ligne, temps réel (SSE).
+// giga-simple-lists : rendu, mises à jour optimistes, file d'attente hors ligne, temps réel (SSE).
 'use strict';
 (() => {
   const ME = document.body.dataset.me;
@@ -22,6 +22,9 @@
   const mobile = matchMedia('(max-width: 699px)');
   const DEFAULT_LIST_NAME = document.body.dataset.defaultListName;
   const COLORS = [...document.querySelectorAll('input[name="color"]')].map((i) => i.value);
+  // Messages dans la langue de l'instance (LISTES_LANG, i18n.go) ; {nom} est remplacé par vars.nom.
+  const MESSAGES = JSON.parse($('messages').textContent);
+  const t = (key, vars = {}) => (MESSAGES[key] || key).replace(/\{(\w+)\}/g, (_, k) => vars[k]);
 
   let lists = [];          // [{id, owner_id, owner_name, name, color, shared, position, items: [...]}]
   let current = null;      // id de la liste affichée
@@ -57,8 +60,52 @@
   // Même calcul que creationID côté serveur : l'identifiant est connu avant la réponse.
   async function creationID(nonce) {
     const data = new TextEncoder().encode('listes-id\0' + ME + '\0' + nonce);
-    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    const h = crypto.subtle ? new Uint8Array(await crypto.subtle.digest('SHA-256', data)) : sha256(data);
     return [...h.slice(0, 16)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  // SHA-256 (FIPS 180-4) pour les pages servies en HTTP simple (LISTES_INSECURE_HTTP) : le
+  // navigateur n'y fournit pas crypto.subtle, réservé aux contextes sécurisés.
+  const K256 = [];
+  {
+    const frac = (x) => ((x - Math.floor(x)) * 2 ** 32) >>> 0;
+    for (let n = 2; K256.length < 64; n++) {
+      let prime = true;
+      for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+      if (prime) K256.push(frac(Math.cbrt(n)));
+    }
+  }
+  function sha256(bytes) {
+    const len = bytes.length;
+    const padded = new Uint8Array(((len + 9 + 63) >> 6) << 6);
+    padded.set(bytes);
+    padded[len] = 0x80;
+    const dv = new DataView(padded.buffer);
+    dv.setUint32(padded.length - 8, Math.floor(len / 2 ** 29));
+    dv.setUint32(padded.length - 4, (len << 3) >>> 0);
+    const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    const w = new Uint32Array(64);
+    const ror = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let off = 0; off < padded.length; off += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const s0 = ror(w[i - 15], 7) ^ ror(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = ror(w[i - 2], 17) ^ ror(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let [a, b, c, d, e, f, g, h] = H;
+      for (let i = 0; i < 64; i++) {
+        const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K256[i] + w[i]) >>> 0;
+        const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      [a, b, c, d, e, f, g, h].forEach((x, i) => { H[i] = (H[i] + x) >>> 0; });
+    }
+    const out = new Uint8Array(32);
+    const ov = new DataView(out.buffer);
+    H.forEach((x, i) => ov.setUint32(i * 4, x));
+    return out;
   }
 
   const byId = (id) => lists.find((l) => l.id === id);
@@ -92,9 +139,9 @@
     showUndo();
   }
 
-  const quote = (s) => '« ' + s + ' »';
-  const itemsLabel = (items) => (items.length > 1 ? items.length + ' éléments supprimés'
-    : quote(items[0].text) + (items[0].category ? ' supprimée' : ' supprimé'));
+  const quote = (s) => t('quote', { s });
+  const itemsLabel = (items) => (items.length > 1 ? t('itemsDeleted', { n: items.length })
+    : t(items[0].category ? 'categoryDeleted' : 'itemDeleted', { q: quote(items[0].text) }));
 
   function showUndo() {
     clearTimeout(undoTimer);
@@ -118,7 +165,7 @@
   // taille maximale d'une requête, dans le même ordre.
   async function restoreItems(listId, snaps) {
     const l = byId(listId);
-    if (!l) { toast('Cette liste n’est plus là.'); return; }
+    if (!l) { toast(t('listGone')); return; }
     const made = [];
     for (const s of snaps) {
       if (l.items.some((x) => x.id === s.id)) continue; // encore là (décoché par un autre entre-temps)
@@ -226,7 +273,7 @@
           // l'opération et on recharge l'état du serveur.
           if (res.status !== 404) {
             const err = await res.json().catch(() => ({}));
-            toast(err.error || 'Modification refusée.');
+            toast(err.error || t('refused'));
           }
           resyncWanted = true;
         }
@@ -347,7 +394,7 @@
     lists = lists.filter((x) => x.id !== id);
     if (current === id) {
       open(lists.length ? lists[0].id : null);
-      toast(reason === 'unshared' ? 'Cette liste n’est plus partagée' : 'Cette liste a été supprimée');
+      toast(t(reason === 'unshared' ? 'unshared' : 'deleted'));
     } else {
       render();
     }
@@ -400,13 +447,13 @@
     el.list.className = 'list c-' + l.color;
     if (document.activeElement !== el.title) el.title.value = l.name;
     el.switcherName.textContent = l.name;
-    el.switcher.setAttribute('aria-label', l.name + ' : changer de liste');
+    el.switcher.setAttribute('aria-label', t('switcherLabel', { name: l.name }));
     const mine = isMine(l);
     el.share.checked = l.shared;
     el.share.disabled = !mine;
     el.ownerTools.hidden = !mine;
     el.ownerNote.hidden = mine;
-    el.ownerNote.textContent = mine ? '' : 'Liste de ' + l.owner_name + ', partagée avec toi.';
+    el.ownerNote.textContent = mine ? '' : t('ownerNote', { owner: l.owner_name });
     document.querySelectorAll('input[name="color"]').forEach((r) => { r.checked = r.value === l.color; });
     renderItems(l);
   }
@@ -428,15 +475,15 @@
       if (!isMine(l)) {
         const from = document.createElement('span');
         from.className = 'from';
-        from.textContent = ' · de ' + l.owner_name;
+        from.textContent = ' · ' + t('from', { owner: l.owner_name });
         b.append(from);
       }
       if (l.shared) {
         const mark = document.createElement('span');
         mark.className = 'mark';
         mark.textContent = '⇄';
-        mark.title = 'Partagée';
-        mark.setAttribute('aria-label', 'partagée');
+        mark.title = t('shared');
+        mark.setAttribute('aria-label', t('sharedAria'));
         b.append(mark);
       }
       return b;
@@ -465,7 +512,7 @@
         shared = true;
         const h = document.createElement('p');
         h.className = 'sheet-group';
-        h.textContent = 'Partagées avec moi';
+        h.textContent = t('sharedWithMe');
         rows.push(h);
       }
       const b = document.createElement('button');
@@ -482,21 +529,21 @@
       if (!isMine(l)) {
         const from = document.createElement('span');
         from.className = 'from';
-        from.textContent = 'de ' + l.owner_name;
+        from.textContent = t('from', { owner: l.owner_name });
         b.append(from);
       }
       if (l.shared) {
         const mark = document.createElement('span');
         mark.className = 'mark';
         mark.textContent = '⇄';
-        mark.setAttribute('aria-label', 'partagée');
+        mark.setAttribute('aria-label', t('sharedAria'));
         b.append(mark);
       }
       const n = l.items.filter((it) => !it.category && !it.checked).length;
       const count = document.createElement('span');
       count.className = 'count';
       count.textContent = n || '';
-      if (n) count.setAttribute('aria-label', n + ' à faire');
+      if (n) count.setAttribute('aria-label', t('todo', { n }));
       b.append(count);
       rows.push(b);
     });
@@ -526,13 +573,13 @@
     });
     s.classList.toggle('more-top', s.scrollTop > 2);
     s.classList.toggle('more-bottom', s.scrollTop + s.clientHeight < s.scrollHeight - 2);
-    const label = (n) => n + (n > 1 ? ' autres' : ' autre');
+    const label = (n) => t(n > 1 ? 'otherMany' : 'otherOne', { n });
     el.sheetUp.hidden = !above;
     el.sheetUp.textContent = label(above);
-    el.sheetUp.setAttribute('aria-label', 'Voir ' + label(above) + ' au-dessus');
+    el.sheetUp.setAttribute('aria-label', t('seeAbove', { label: label(above) }));
     el.sheetDown.hidden = !below;
     el.sheetDown.textContent = label(below);
-    el.sheetDown.setAttribute('aria-label', 'Voir ' + label(below) + ' en dessous');
+    el.sheetDown.setAttribute('aria-label', t('seeBelow', { label: label(below) }));
   }
   const pageSheet = (dir) => el.sheetLists.scrollBy({ top: dir * el.sheetLists.clientHeight * 0.7, behavior: reduceMotion ? 'auto' : 'smooth' });
 
@@ -563,7 +610,7 @@
       li.classList.toggle('done', it.category ? done.has(it.id) : it.checked);
       li.querySelector('.check input').checked = it.checked;
       const text = li.querySelector('.text');
-      text.setAttribute('aria-label', it.category ? 'Nom de la catégorie' : 'Texte de l’élément');
+      text.setAttribute('aria-label', t(it.category ? 'categoryName' : 'itemText'));
       if (document.activeElement !== text && text.value !== it.text) text.value = it.text;
       fitText(text);
       if (li !== ref) el.items.insertBefore(li, ref); else ref = ref.nextSibling;
@@ -574,7 +621,7 @@
     const anyChecked = l.items.some((it) => it.checked);
     el.checkedTools.hidden = !l.items.some((it) => !it.category);
     el.clear.hidden = !anyChecked;
-    el.uncheck.textContent = anyChecked ? 'Tout décocher' : 'Tout cocher';
+    el.uncheck.textContent = t(anyChecked ? 'uncheckAll' : 'checkAll');
   }
 
   // Ordre affiché : les éléments placés avant la première catégorie, puis chaque
@@ -618,12 +665,12 @@
     const handle = document.createElement('button');
     handle.type = 'button';
     handle.className = 'handle';
-    handle.setAttribute('aria-label', 'Déplacer (flèches haut et bas)');
+    handle.setAttribute('aria-label', t('move'));
     const label = document.createElement('label');
     label.className = 'check';
     const box = document.createElement('input');
     box.type = 'checkbox';
-    box.setAttribute('aria-label', 'Cocher');
+    box.setAttribute('aria-label', t('check'));
     label.append(box);
     // Zone de texte qui passe à la ligne (jusqu'à 3 lignes), sans retour chariot possible.
     const text = document.createElement('textarea');
@@ -636,7 +683,7 @@
     remove.type = 'button';
     remove.className = 'remove';
     remove.textContent = '−';
-    remove.setAttribute('aria-label', 'Retirer cet élément');
+    remove.setAttribute('aria-label', t('remove'));
     li.append(handle, label, text, remove);
     return li;
   }
@@ -1186,7 +1233,7 @@
   el.del.addEventListener('click', () => {
     const l = currentList();
     if (!l) return;
-    el.confirmText.textContent = 'Supprimer « ' + l.name + ' » et tous ses éléments ?';
+    el.confirmText.textContent = t('confirmDelete', { q: quote(l.name) });
     el.confirm.hidden = false;
     el.del.hidden = true;
     el.delNo.focus();
@@ -1195,7 +1242,7 @@
   el.delYes.addEventListener('click', () => {
     const l = currentList();
     if (!l) return;
-    remember({ label: 'Liste ' + quote(l.name) + ' supprimée', list: { ...l, items: l.items.map((it) => ({ ...it })) } });
+    remember({ label: t('listDeleted', { q: quote(l.name) }), list: { ...l, items: l.items.map((it) => ({ ...it })) } });
     lists = lists.filter((x) => x.id !== l.id);
     send('DELETE', '/api/lists/' + l.id, undefined, [l.id]);
     open(lists.length ? lists[0].id : null);

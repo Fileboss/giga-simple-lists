@@ -55,7 +55,7 @@ func newApp(cfg config, db *sql.DB) *App {
 		cfg:       cfg,
 		db:        db,
 		hub:       newHub(),
-		tmpl:      template.Must(template.ParseFS(templatesFS, "web/templates/*.html")),
+		tmpl:      template.Must(template.New("").Funcs(templateFuncs).ParseFS(templatesFS, "web/templates/*.html")),
 		static:    map[string]staticFile{},
 		loginMin:  800 * time.Millisecond,
 		heartbeat: 20 * time.Second,
@@ -73,7 +73,28 @@ func newApp(cfg config, db *sql.DB) *App {
 		a.static[strings.TrimPrefix(p, "web")] = staticFile{body, ctype, `"` + hex.EncodeToString(sum[:8]) + `"`}
 		return nil
 	})
+	a.localizeManifest()
 	return a
+}
+
+// templateFuncs : t "clé" donne le message dans la langue de l'instance (i18n.go).
+var templateFuncs = template.FuncMap{
+	"t":    T,
+	"lang": func() string { return lang },
+}
+
+// localizeManifest : nom, description et langue du manifeste dans la langue de l'instance.
+func (a *App) localizeManifest() {
+	const p = "/static/manifest.webmanifest"
+	f := a.static[p]
+	var m map[string]any
+	if err := json.Unmarshal(f.body, &m); err != nil {
+		panic(err) // fichier intégré au binaire : vérifié par les tests
+	}
+	m["name"], m["short_name"], m["description"], m["lang"] = T("app.name"), T("app.name"), T("app.description"), lang
+	body, _ := json.MarshalIndent(m, "", "  ")
+	sum := sha256.Sum256(body)
+	a.static[p] = staticFile{body, f.ctype, `"` + hex.EncodeToString(sum[:8]) + `"`}
 }
 
 // commitAndPublish exécute fn dans une transaction puis publie ses événements, le tout sous un
@@ -212,7 +233,7 @@ func (a *App) authedAPI(h func(http.ResponseWriter, *http.Request, *session)) ht
 func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var token string
-		if c, err := r.Cookie(sessionCookie); err == nil {
+		if c, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
 			token = c.Value
 		}
 		s, refreshed, err := lookupSession(a.db, token)
@@ -221,14 +242,14 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 				errorLog("session", err)
 			}
 			if api {
-				writeJSON(w, http.StatusUnauthorized, apiError{"Session expirée, reconnecte-toi."})
+				writeJSON(w, http.StatusUnauthorized, apiError{T("err.sessionExpired")})
 			} else {
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 			}
 			return
 		}
 		if refreshed {
-			setSessionCookie(w, token, s)
+			a.setSessionCookie(w, token, s)
 		}
 		if isUnsafe(r.Method) {
 			sent := r.Header.Get("X-CSRF-Token")
@@ -236,7 +257,7 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 				sent = r.PostFormValue("csrf")
 			}
 			if !a.sameOrigin(r) || subtle.ConstantTimeCompare([]byte(sent), []byte(s.CSRF)) != 1 {
-				writeJSON(w, http.StatusForbidden, apiError{"Requête refusée."})
+				writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
 				return
 			}
 		}
@@ -244,10 +265,20 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 	}
 }
 
-// setCookie : tous les cookies sont des __Host- (Secure, Path=/) et HttpOnly.
-func setCookie(w http.ResponseWriter, name, value string, maxAge int, sameSite http.SameSite) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: maxAge,
-		Secure: true, HttpOnly: true, SameSite: sameSite})
+// cookieName : les cookies sont des __Host- (Secure, Path=/). Avec LISTES_INSECURE_HTTP, le
+// navigateur refuserait un __Host- reçu en HTTP simple : ils deviennent listes_<nom>, sans
+// Secure. Sans cette option, rien ne change (noms, attributs, sessions existantes).
+func (a *App) cookieName(name string) string {
+	if a.cfg.InsecureHTTP {
+		return "listes_" + strings.TrimPrefix(name, "__Host-")
+	}
+	return name
+}
+
+// setCookie : tous les cookies sont HttpOnly, Path=/, et Secure sauf LISTES_INSECURE_HTTP.
+func (a *App) setCookie(w http.ResponseWriter, name, value string, maxAge int, sameSite http.SameSite) {
+	http.SetCookie(w, &http.Cookie{Name: a.cookieName(name), Value: value, Path: "/", MaxAge: maxAge,
+		Secure: !a.cfg.InsecureHTTP, HttpOnly: true, SameSite: sameSite})
 }
 
 // setSessionCookie : SameSite=Lax, pas Strict. Une appli installée sur l'écran d'accueil
@@ -256,13 +287,13 @@ func setCookie(w http.ResponseWriter, name, value string, maxAge int, sameSite h
 // ouverture. Lax n'envoie le cookie, depuis un autre site, que sur une navigation GET, et
 // aucune route GET ne modifie rien ; les requêtes qui modifient restent protégées par
 // l'Origin, Sec-Fetch-Site et le jeton CSRF (authed).
-func setSessionCookie(w http.ResponseWriter, token string, s *session) {
+func (a *App) setSessionCookie(w http.ResponseWriter, token string, s *session) {
 	maxAge := time.Duration(s.expiry()-nowMs()) * time.Millisecond
-	setCookie(w, sessionCookie, token, int(maxAge.Seconds()), http.SameSiteLaxMode)
+	a.setCookie(w, sessionCookie, token, int(maxAge.Seconds()), http.SameSiteLaxMode)
 }
 
-func clearCookie(w http.ResponseWriter, name string) {
-	setCookie(w, name, "", -1, http.SameSiteLaxMode)
+func (a *App) clearCookie(w http.ResponseWriter, name string) {
+	a.setCookie(w, name, "", -1, http.SameSiteLaxMode)
 }
 
 // ---------------------------------------------------------------------------
@@ -304,17 +335,18 @@ func (a *App) render(w http.ResponseWriter, status int, name string, data any) {
 	}
 }
 
-// appPageData : les limites viennent de store.go, app.js les lit dans la page.
+// appPageData : les limites viennent de store.go, les messages de i18n.go ; app.js les lit dans la page.
 type appPageData struct {
 	UserID, Name, CSRF       string
 	Colors                   []color
 	MaxItemText, MaxListName int
 	DefaultListName          string
+	Messages                 map[string]string
 }
 
 func (a *App) appPage(w http.ResponseWriter, r *http.Request, s *session) {
 	a.render(w, http.StatusOK, "app.html", appPageData{UserID: s.UserID, Name: s.UserName, CSRF: s.CSRF, Colors: colors,
-		MaxItemText: maxItemText, MaxListName: maxListName, DefaultListName: defaultListName})
+		MaxItemText: maxItemText, MaxListName: maxListName, DefaultListName: T("list.default"), Messages: jsMessages()})
 }
 
 // housekeeping : purge horaire des sessions expirées et des vieux compteurs d'échecs.
@@ -325,11 +357,11 @@ func (a *App) housekeeping(ctx context.Context) {
 		n := nowMs()
 		if _, err := a.db.Exec(`DELETE FROM sessions WHERE last_seen_at < ? OR created_at < ?`,
 			n-sessionIdle.Milliseconds(), n-sessionMax.Milliseconds()); err != nil {
-			slog.Error("purge des sessions", "err", err)
+			slog.Error(T("log.purgeSessions"), "err", err)
 		}
 		if _, err := a.db.Exec(`DELETE FROM login_attempts WHERE last_failure_at < ? AND locked_until < ?`,
 			n-attemptsWindow.Milliseconds(), n); err != nil {
-			slog.Error("purge des tentatives", "err", err)
+			slog.Error(T("log.purgeAttempts"), "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -355,7 +387,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // decodeJSON : Content-Type JSON, champs connus seulement, un seul objet, ≤ 16 Ko (limitBody).
 func decodeJSON(r *http.Request, v any) error {
 	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
-		return invalidError("Content-Type attendu : application/json")
+		return invalidError("err.contentType")
 	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -364,10 +396,10 @@ func decodeJSON(r *http.Request, v any) error {
 		if errors.As(err, &mbe) {
 			return err
 		}
-		return invalidError("JSON invalide")
+		return invalidError("err.badJSON")
 	}
 	if dec.More() {
-		return invalidError("JSON invalide")
+		return invalidError("err.badJSON")
 	}
 	if _, err := io.Copy(io.Discard, r.Body); err != nil {
 		return err
@@ -380,20 +412,20 @@ func writeErr(w http.ResponseWriter, err error) {
 	var mbe *http.MaxBytesError
 	switch {
 	case errors.Is(err, errNotFound):
-		writeJSON(w, http.StatusNotFound, apiError{"Introuvable."})
+		writeJSON(w, http.StatusNotFound, apiError{T("err.notFound")})
 	case errors.Is(err, errForbidden):
-		writeJSON(w, http.StatusForbidden, apiError{"Réservé au propriétaire de la liste."})
+		writeJSON(w, http.StatusForbidden, apiError{T("err.forbidden")})
 	case errors.Is(err, errLimit):
-		writeJSON(w, http.StatusConflict, apiError{"Limite atteinte."})
+		writeJSON(w, http.StatusConflict, apiError{T("err.limit")})
 	case errors.As(err, &inv):
 		writeJSON(w, http.StatusBadRequest, apiError{inv.Error()})
 	case errors.As(err, &mbe):
-		writeJSON(w, http.StatusRequestEntityTooLarge, apiError{"Requête trop grosse."})
+		writeJSON(w, http.StatusRequestEntityTooLarge, apiError{T("err.tooLarge")})
 	case isStorageFull(err):
-		errorLog("base pleine", err)
-		writeJSON(w, http.StatusInsufficientStorage, apiError{"Stockage plein : retire des éléments ou des listes pour continuer."})
+		errorLog(T("log.storageFull"), err)
+		writeJSON(w, http.StatusInsufficientStorage, apiError{T("err.storageFull")})
 	default:
-		errorLog("requête", err)
-		writeJSON(w, http.StatusInternalServerError, apiError{"Erreur interne."})
+		errorLog(T("log.request"), err)
+		writeJSON(w, http.StatusInternalServerError, apiError{T("err.internal")})
 	}
 }

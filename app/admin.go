@@ -7,27 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-const adminUsage = `usage :
-  listes user add <nom> [--password-stdin]     crée un compte ; affiche le mot de passe généré
-  listes user reset <nom> [--password-stdin]   nouveau mot de passe, sessions révoquées
-  listes user list                             liste les comptes
-  listes sessions revoke-all                   déconnecte tous les appareils de tous les comptes`
-
 // adminCommand : gestion des comptes, en ligne de commande uniquement
 // (docker compose exec listes listes user add <nom>).
 func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error {
 	if len(args) < 2 {
-		return errors.New(adminUsage)
+		return errors.New(T("cli.usage"))
 	}
 	switch args[0] + " " + args[1] {
 	case "user add", "user reset":
 		if len(args) < 3 {
-			return errors.New(adminUsage)
+			return errors.New(T("cli.usage"))
 		}
 		fromStdin := len(args) > 3 && args[3] == "--password-stdin"
 		return setUser(out, in, db, args[2], args[1] == "add", fromStdin)
@@ -43,7 +39,7 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 			if err := rows.Scan(&name, &n); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%s\t%d session(s)\n", name, n)
+			fmt.Fprintf(out, T("cli.sessionsRow"), name, n)
 		}
 		return rows.Err()
 	case "sessions revoke-all":
@@ -52,19 +48,19 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 			return err
 		}
 		n, _ := res.RowsAffected()
-		fmt.Fprintf(out, "%d session(s) révoquée(s). Les flux temps réel ouverts se coupent sous 20 s.\n", n)
+		fmt.Fprintf(out, T("cli.revoked"), n)
 		return nil
 	}
-	return errors.New(adminUsage)
+	return errors.New(T("cli.usage"))
 }
 
 func validUserName(name string) error {
 	if name == "" || utf8.RuneCountInString(name) > maxUserNameRunes || !utf8.ValidString(name) {
-		return fmt.Errorf("nom invalide : 1 à %d caractères", maxUserNameRunes)
+		return fmt.Errorf(T("cli.nameLength"), maxUserNameRunes)
 	}
 	for _, r := range name {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("-_.", r) {
-			return errors.New("nom invalide : lettres, chiffres, - _ . seulement")
+			return errors.New(T("cli.nameChars"))
 		}
 	}
 	return nil
@@ -82,7 +78,7 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 		}
 		password = strings.TrimRight(line, "\r\n")
 		if utf8.RuneCountInString(password) < 15 {
-			return errors.New("mot de passe trop court : 15 caractères minimum")
+			return errors.New(T("cli.passwordShort"))
 		}
 	}
 	hash := hashPassword(password)
@@ -99,18 +95,18 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 			return err
 		}
 		if taken {
-			return fmt.Errorf("le compte %q existe déjà (user reset pour le réinitialiser)", name)
+			return fmt.Errorf(T("cli.exists"), name)
 		}
 		_, err = tx.Exec(`INSERT INTO users (id, name, password_hash, created_at) VALUES (?, ?, ?, ?)`,
 			newID(), name, hash, nowMs())
 		if isConstraint(err) {
-			return fmt.Errorf("le compte %q existe déjà (user reset pour le réinitialiser)", name)
+			return fmt.Errorf(T("cli.exists"), name)
 		}
 	} else {
 		var res sql.Result
 		res, err = tx.Exec(`UPDATE users SET password_hash = ? WHERE name = ?`, hash, name)
 		if n, _ := rowsAffected(res, err); err == nil && n != 1 {
-			return fmt.Errorf("compte %q introuvable", name)
+			return fmt.Errorf(T("cli.notFound"), name)
 		}
 		if err == nil {
 			_, err = tx.Exec(`DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE name = ?)`, name)
@@ -126,14 +122,36 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 		return err
 	}
 
-	verb := "créé"
-	if !create {
-		verb = "réinitialisé (sessions révoquées)"
+	if create {
+		fmt.Fprintf(out, T("cli.created"), name)
+	} else {
+		fmt.Fprintf(out, T("cli.reset"), name)
 	}
-	fmt.Fprintf(out, "Compte %q %s.\n\n", name, verb)
 	if !fromStdin {
-		fmt.Fprintf(out, "Mot de passe (affiché une seule fois, à ranger dans un gestionnaire de mots de passe) :\n\n    %s\n\n", password)
+		fmt.Fprintf(out, T("cli.passwordOnce"), password)
 	}
+	return nil
+}
+
+// backup : copie cohérente de la base, même pendant que le serveur tourne (VACUUM INTO
+// lit un instantané, le WAL laisse le serveur écrire). L'image n'a pas de sqlite3 : sans
+// cette commande, il faudrait l'installer sur l'hôte. Par défaut, la copie va à côté de
+// la base, donc dans le volume /data. Un fichier existant n'est jamais écrasé.
+func backup(out io.Writer, db *sql.DB, dbPath, dest string) error {
+	if dest == "" {
+		dest = filepath.Join(filepath.Dir(dbPath), "listes-backup-"+now().Format("20060102-150405")+".db")
+	}
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf(T("cli.backupExists"), dest)
+	}
+	if _, err := db.Exec(`VACUUM INTO ?`, dest); err != nil {
+		return err
+	}
+	st, err := os.Stat(dest)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, T("cli.backupDone"), dest, st.Size())
 	return nil
 }
 

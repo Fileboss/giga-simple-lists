@@ -38,7 +38,7 @@ func TestPrivateListsInvisibleToOthers(t *testing.T) {
 		{"PATCH", "/api/lists/not-an-id", map[string]any{"name": "x"}},
 	} {
 		w := h.expect(http.StatusNotFound, sa, c.method, c.path, c.body)
-		if w.Body.String() != "{\"error\":\"Introuvable.\"}\n" {
+		if w.Body.String() != "{\"error\":\"Not found.\"}\n" {
 			t.Fatalf("%s %s : corps %q", c.method, c.path, w.Body.String())
 		}
 	}
