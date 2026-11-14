@@ -21,7 +21,7 @@ var migrationsFS embed.FS
 
 // Taille maximale de la base : 50 Mio (pages de 4 Kio). Au-delà, SQLite refuse les
 // écritures (SQLITE_FULL) : l'API répond 507, la lecture continue de marcher. Le disque
-// de l'hôte, souvent partagé avec d'autres services, ne peut pas être rempli par Listes.
+// de l'hôte, souvent partagé avec d'autres services, ne peut pas être rempli par giga-simple-lists.
 var dbMaxPages = 50 << 20 / 4096
 
 // isStorageFull : écriture refusée par la limite de taille (ou disque plein).

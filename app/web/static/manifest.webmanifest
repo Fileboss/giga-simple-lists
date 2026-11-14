@@ -1,8 +1,8 @@
 {
-  "name": "Listes",
-  "short_name": "Listes",
-  "description": "Listes à cocher partagées",
-  "lang": "fr",
+  "name": "giga-simple-lists",
+  "short_name": "giga-simple-lists",
+  "description": "Shared checklists",
+  "lang": "en",
   "id": "/",
   "start_url": "/",
   "scope": "/",

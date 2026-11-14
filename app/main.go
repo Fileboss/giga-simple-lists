@@ -1,4 +1,4 @@
-// Listes : listes à cocher partagées, temps réel (SSE), un seul binaire.
+// giga-simple-lists : listes à cocher partagées, temps réel (SSE), un seul binaire.
 //
 //	listes [serve]                 serveur HTTP
 //	listes user add <nom>          crée un compte (mot de passe généré)

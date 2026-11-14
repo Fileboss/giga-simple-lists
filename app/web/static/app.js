@@ -1,4 +1,4 @@
-// Listes : rendu, mises à jour optimistes, file d'attente hors ligne, temps réel (SSE).
+// giga-simple-lists : rendu, mises à jour optimistes, file d'attente hors ligne, temps réel (SSE).
 'use strict';
 (() => {
   const ME = document.body.dataset.me;
