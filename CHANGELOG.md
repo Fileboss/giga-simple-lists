@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## Unreleased (proposed: v2.3.0)
+
+### Added
+
+- **Duplicate a list**: a private copy for yourself, all unchecked, to reuse a list as a template.
+- **Export and import** your lists as JSON from the "Account" page. An import always creates new,
+  private lists.
+- **Personal API token** and `POST /api/v1/items` to add an item to a list by its name (Home
+  Assistant, phone shortcuts); `GET /api/v1/lists` lists the names. See README, Integrations.
+- `LISTES_AUTH_HEADER`: optional sign-in through an authentication proxy header (Authelia,
+  Authentik), trusted only from `LISTES_TRUSTED_PROXIES`, for existing accounts.
+
+### Upgrading
+
+- The database is migrated at startup (API tokens). Nothing else changes; no new required variable.
+
+## v2.2.2 (2026-11-15)
 
 ### Changed
 

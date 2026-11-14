@@ -149,6 +149,24 @@ couvrent les navigateurs anciens et les erreurs de configuration.
   liens) et une copie de la liste sont gardées sur l'appareil, même après la déconnexion d'un
   compte, puisque le lien n'en dépend pas. Un lien révoqué est oublié à sa prochaine ouverture
   en ligne.
+### Intégrations
+
+- **Jeton d'API** : un par compte, créé dans « Mon compte », affiché une seule fois ; seul son
+  SHA-256 est en base. Envoyé en `Authorization: Bearer gsl_…`, il n'est accepté **que** sur
+  `/api/v1/*` (ajouter un élément, lister les listes), et ces routes n'acceptent rien d'autre : pas de
+  cookie, donc pas de CSRF (un navigateur n'envoie jamais cet en-tête de lui-même). Il permet de lire
+  et modifier toutes les listes que voit son compte. Le remplacer ou le révoquer prend effet
+  aussitôt. Au plus 60 appels par minute et par compte.
+- **En-tête d'authentification** (`LISTES_AUTH_HEADER`, désactivé par défaut) : le compte nommé est
+  connecté sans mot de passe. L'en-tête n'est lu que sur les connexions venant de `127.0.0.1` et de
+  `LISTES_TRUSTED_PROXIES`, comme `X-Forwarded-For`, et ne désigne qu'un compte existant. Tout ce qui
+  peut joindre l'appli par une adresse de confiance peut donc se connecter sous n'importe quel nom en
+  posant l'en-tête : ne l'activer que si **tous** les chemins vers l'appli passent par le proxy
+  d'authentification, et que ce proxy écrase toujours l'en-tête. Se déconnecter de l'appli ne sert
+  alors à rien (la requête suivante reconnecte) : on se déconnecte au proxy.
+- **Import** : 2 Mo au plus, tout ou rien, toujours de nouvelles listes privées ; les limites
+  habituelles s'appliquent (listes par compte, éléments par liste, longueur des textes).
+
 ### Navigateur
 
 - **CSP stricte, sans script ni style inline**, aucune ressource externe (ni CDN, ni police).

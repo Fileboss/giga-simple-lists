@@ -60,6 +60,50 @@
       </form>
       {{end}}
     </section>
+
+    <section>
+      {{template "section-head" (list (t "account.data") (t "account.dataHelp"))}}
+      <form method="post" action="/account/import" enctype="multipart/form-data" class="card card-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <a class="small-link" href="/account/export" download>{{t "account.export"}}</a>
+        <span class="import-field">
+          <input type="file" name="file" accept="application/json,.json" required aria-label="{{t "account.importButton"}}">
+          <button type="submit" class="small">{{t "account.importButton"}}</button>
+        </span>
+      </form>
+    </section>
+
+    <section>
+      {{template "section-head" (list (t "account.api") (t "account.apiHelp"))}}
+      <div class="card card-form">
+        {{if .NewToken}}
+        <input class="link-field" type="text" value="{{.NewToken}}" readonly aria-label="{{t "account.api"}}">
+        <p class="muted">{{t "account.apiNewToken"}}</p>
+        <p class="muted">{{t "account.apiExample"}}</p>
+        <pre class="code">curl -X POST {{.Origin}}/api/v1/items \
+  -H 'Authorization: Bearer {{.NewToken}}' \
+  -H 'Content-Type: application/json' \
+  -d '{"list": "…", "text": "…"}'</pre>
+        {{else if .Token}}
+        {{$used := t "account.apiNeverUsed"}}{{if .Token.LastUsed}}{{$used = tf "account.apiLastUsed" (ago .Token.LastUsed)}}{{end}}
+        <p class="muted">{{tf "account.apiStatus" (day .Token.Created) $used}}</p>
+        {{else}}
+        <p class="muted">{{t "account.apiNone"}}</p>
+        {{end}}
+        <div class="card-foot">
+          {{if or .Token .NewToken}}
+          <form method="post" action="/account/token/revoke">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="text-danger">{{t "account.apiRevoke"}}</button>
+          </form>
+          {{end}}
+          <form method="post" action="/account/token">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="small">{{if or .Token .NewToken}}{{t "account.apiReplace"}}{{else}}{{t "account.apiCreate"}}{{end}}</button>
+          </form>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 </body>

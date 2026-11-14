@@ -19,6 +19,12 @@ type loginPageData struct {
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
+	if u := a.headerUser(r); u != nil { // déjà authentifié par le reverse proxy
+		if _, err := a.headerSession(w, r, u); err == nil {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+	}
 	if c, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
 		if _, _, err := lookupSession(a.db, c.Value); err == nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)

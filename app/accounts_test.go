@@ -105,8 +105,8 @@ func TestMigrationAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Revenir à l'état de la version 3 : sans ce qu'ajoutent 004 et 005.
-	for _, q := range []string{`DROP TABLE list_members`, `DROP INDEX lists_public_token`, `ALTER TABLE lists DROP COLUMN public_token`,
+	// Revenir à l'état de la version 3 : sans ce qu'ajoutent 004, 005 et 006.
+	for _, q := range []string{`DROP TABLE api_tokens`, `DROP TABLE list_members`, `DROP INDEX lists_public_token`, `ALTER TABLE lists DROP COLUMN public_token`,
 		`DROP TABLE invitations`, `ALTER TABLE sessions DROP COLUMN user_agent`,
 		`ALTER TABLE users DROP COLUMN is_admin`, `PRAGMA user_version = 3`,
 		`INSERT INTO users (id, name, password_hash, created_at) VALUES ('` + newID() + `', 'zoe', 'x', 2000)`,

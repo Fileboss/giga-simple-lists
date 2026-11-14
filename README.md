@@ -35,6 +35,11 @@ list is just a series of checkboxes, always editable. One static Go binary, one 
   list (groceries). When nothing is checked, the same button becomes "Check all".
 - **Undo** a deletion (item, category, checked items or a whole list): an "Undo" banner appears at
   the bottom, and Ctrl+Z / ⌘Z works too. The last 5 deletions are kept.
+- **Duplicate a list** to reuse it as a template ("Packing list"): a private copy, all unchecked.
+- **Your data stays yours**: export your lists as JSON from the "Account" page, import them back
+  (or into another instance).
+- **Integrations**, all optional: a personal API token to add items from Home Assistant or a phone
+  shortcut, and sign-in through an authentication proxy (Authelia, Authentik).
 - On a phone, the list title opens a bottom sheet with every list and its number of items left.
 - Installable web app (iOS, Android), **light and dark mode** following the device setting.
 - Interface in **English or French**, chosen once per instance (`LISTES_LANG`).
@@ -197,6 +202,57 @@ docker compose exec listes listes backup /data/today.db  # never overwrites an e
 The copy is a complete SQLite database: to restore, stop the container and replace `listes.db`
 with it. `sqlite3 listes.db ".backup copy.db"` from the host works too.
 
+## Integrations
+
+### Adding items from another tool (API token)
+
+On the "Account" page, create a personal API token (shown once, revocable). Then:
+
+```sh
+curl -X POST https://lists.example.com/api/v1/items \
+  -H 'Authorization: Bearer gsl_…' \
+  -H 'Content-Type: application/json' \
+  -d '{"list": "Groceries", "text": "Milk"}'
+```
+
+- `list`: the list's name (case-insensitive; your own lists first if two share a name) or its id.
+  `text`: the item, added at the end like the "Add" field. `"category": true` adds a heading.
+  Answers `201` with the item; everyone viewing the list sees it live.
+- `GET /api/v1/lists` lists the names and ids you can use, with their number of items left.
+- At most 60 calls per minute per account. The token can read and edit every list its account sees:
+  keep it in a secrets store.
+
+Home Assistant (`configuration.yaml`), then call `rest_command.add_to_groceries` from an automation
+or a voice assistant:
+
+```yaml
+rest_command:
+  add_to_groceries:
+    url: https://lists.example.com/api/v1/items
+    method: post
+    headers:
+      Authorization: !secret lists_token
+    content_type: application/json
+    payload: '{"list": "Groceries", "text": "{{ item }}"}'
+```
+
+(`lists_token` in `secrets.yaml` is `Bearer gsl_…`.)
+
+### Signing in through an authentication proxy
+
+If Authelia, Authentik or another proxy already authenticates people and passes their user name in
+a header, set `LISTES_AUTH_HEADER=Remote-User`. A request carrying it signs that account in, without
+a password. The header is trusted **only** from `127.0.0.1` and `LISTES_TRUSTED_PROXIES`, and only
+names an existing account (accounts are still created by invitation). Use it only if **every** path
+to the app goes through that proxy and the proxy always sets (overwrites) the header; signing out
+then happens at the proxy. See [SECURITY.md](SECURITY.md).
+
+### Export and import
+
+"Account" → "Your data": **Export my lists** downloads a JSON file with the lists you own and their
+items. **Import** reads such a file and always creates new, private lists (nothing is merged or
+overwritten), so it also moves lists between instances.
+
 ## Reverse proxy
 
 The app must be served at the exact address of `LISTES_ORIGIN`. The reverse proxy must:
@@ -247,6 +303,7 @@ relay: any connection arriving that way is trusted for its `X-Forwarded-For`.
 | `LISTES_LANG` | `en` | Language of the interface, error messages, command line and logs: `en` or `fr` |
 | `LISTES_TRUSTED_PROXIES` | (none) | Comma-separated IPs whose `X-Forwarded-For` is read, in addition to `127.0.0.1`: the Docker network gateway the published port arrives through |
 | `LISTES_INSECURE_HTTP` | `false` | Allow an `http://` origin other than localhost (trusted LAN only, see above) |
+| `LISTES_AUTH_HEADER` | (none) | Header set by an authentication proxy with the user name (`Remote-User`); trusted only from the proxies above (see Integrations) |
 | `LISTES_DB` | `/data/listes.db` | Database path |
 | `LISTES_ADDR` | `:5240` | Listen address |
 | `TZ` | (UTC) | Time zone (log timestamps) |

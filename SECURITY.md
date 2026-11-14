@@ -140,6 +140,23 @@ old browsers and configuration mistakes.
 - A public link opened on a device stays usable offline there: its page (the last 20 links) and a
   copy of the list are kept on the device, even after signing out of an account, since the link
   needs no account. A revoked link is forgotten the next time it is opened online.
+### Integrations
+
+- **API token**: one per account, created on the "Account" page, shown once; only its SHA-256 is
+  stored. Sent as `Authorization: Bearer gsl_…`, it is accepted **only** on `/api/v1/*` (add an item,
+  list the lists), and those routes accept nothing else: no cookie, so no CSRF to worry about (a
+  browser never sends that header by itself). It can read and edit every list its account sees.
+  Replacing or revoking it takes effect at once. At most 60 calls per minute per account.
+- **Authentication header** (`LISTES_AUTH_HEADER`, off by default): the named account is signed in
+  without a password. The header is read only on connections from `127.0.0.1` and
+  `LISTES_TRUSTED_PROXIES`, like `X-Forwarded-For`, and only matches an existing account. Anything
+  that can reach the app through a trusted address can therefore sign in as anyone by setting the
+  header: enable it only when **every** route to the app goes through the authentication proxy, and
+  when that proxy always overwrites the header. Signing out of the app is pointless then: the next
+  request signs in again; sign out at the proxy.
+- **Import**: at most 2 MB, all or nothing, always new private lists; the usual limits apply
+  (lists per account, items per list, text length).
+
 ### Browser
 
 - **Strict CSP, no inline script or style**, no external resource (no CDN, no font). Together with

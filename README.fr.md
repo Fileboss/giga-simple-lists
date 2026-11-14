@@ -28,6 +28,12 @@ projets de l'année : chaque liste n'est qu'une suite de cases à cocher, toujou
 - Temps réel : une case cochée sur un téléphone apparaît sur l'autre en moins d'une seconde.
 - Hors ligne : l'appli s'ouvre sans réseau sur les dernières listes vues, et les actions faites
   sans réseau sont renvoyées au retour de la connexion.
+- **Dupliquer une liste** pour s'en servir de modèle (« Valise ») : une copie privée, tout décoché.
+- **Tes données restent à toi** : exporte tes listes en JSON depuis « Mon compte », réimporte-les
+  (ou dans une autre instance).
+- **Intégrations**, toutes optionnelles : un jeton d'API personnel pour ajouter des éléments depuis
+  Home Assistant ou un raccourci du téléphone, et la connexion par un proxy d'authentification
+  (Authelia, Authentik).
 - Sur téléphone, le titre de la liste ouvre un panneau, en bas de l'écran, avec toutes les listes
   et le nombre d'éléments à faire de chacune ; on le replie en tirant sa poignée vers le bas.
 - Appli web installable sur l'écran d'accueil (iOS, Android), modes clair et sombre selon le
@@ -156,6 +162,59 @@ docker compose exec listes listes backup /data/jour.db    # n'écrase jamais un 
 La copie est une base SQLite complète : pour restaurer, arrêter le conteneur et remplacer
 `listes.db` par elle. `sqlite3 listes.db ".backup copie.db"` depuis l'hôte marche aussi.
 
+## Intégrations
+
+### Ajouter des éléments depuis un autre outil (jeton d'API)
+
+Dans « Mon compte », crée un jeton d'API personnel (affiché une seule fois, révocable). Puis :
+
+```sh
+curl -X POST https://listes.example.com/api/v1/items \
+  -H 'Authorization: Bearer gsl_…' \
+  -H 'Content-Type: application/json' \
+  -d '{"list": "Courses", "text": "Lait"}'
+```
+
+- `list` : le nom de la liste (sans tenir compte de la casse ; tes listes d'abord si deux ont le même
+  nom) ou son identifiant. `text` : l'élément, ajouté à la fin comme avec le champ « Ajouter ».
+  `"category": true` ajoute un titre de catégorie. Réponse `201` avec l'élément ; tous ceux qui
+  regardent la liste le voient en direct.
+- `GET /api/v1/lists` donne les noms et identifiants utilisables, avec le nombre d'éléments à faire.
+- Au plus 60 appels par minute et par compte. Le jeton permet de lire et modifier toutes les listes
+  que voit son compte : range-le dans un coffre à secrets.
+
+Home Assistant (`configuration.yaml`), puis appelle `rest_command.ajouter_courses` depuis une
+automatisation ou un assistant vocal :
+
+```yaml
+rest_command:
+  ajouter_courses:
+    url: https://listes.example.com/api/v1/items
+    method: post
+    headers:
+      Authorization: !secret listes_token
+    content_type: application/json
+    payload: '{"list": "Courses", "text": "{{ item }}"}'
+```
+
+(`listes_token` dans `secrets.yaml` vaut `Bearer gsl_…`.)
+
+### Connexion par un proxy d'authentification
+
+Si Authelia, Authentik ou un autre proxy authentifie déjà les gens et transmet leur nom dans un
+en-tête, règle `LISTES_AUTH_HEADER=Remote-User`. Une requête qui le porte connecte ce compte, sans
+mot de passe. L'en-tête n'est cru **que** depuis `127.0.0.1` et `LISTES_TRUSTED_PROXIES`, et ne
+désigne qu'un compte existant (les comptes se créent toujours par invitation). À n'utiliser que si
+**tous** les chemins vers l'appli passent par ce proxy et qu'il pose (écrase) toujours l'en-tête ; la
+déconnexion se fait alors au proxy. Voir [SECURITY.fr.md](SECURITY.fr.md).
+
+### Export et import
+
+« Mon compte » → « Mes données » : **Exporter mes listes** télécharge un fichier JSON avec les listes
+dont tu es propriétaire et leurs éléments. **Importer** lit un tel fichier et crée toujours de
+nouvelles listes privées (rien n'est fusionné ni écrasé) : de quoi aussi passer d'une instance à une
+autre.
+
 ## Reverse proxy
 
 L'appli doit être servie à l'adresse exacte de `LISTES_ORIGIN`. Le reverse proxy doit :
@@ -206,6 +265,7 @@ joindre ce relais : toute connexion qui arrive par là est crue sur son `X-Forwa
 | `LISTES_LANG` | `en` | Langue de l'interface, des messages d'erreur, de la ligne de commande et des journaux : `en` ou `fr` |
 | `LISTES_TRUSTED_PROXIES` | (aucune) | IP, séparées par des virgules, dont `X-Forwarded-For` est lu, en plus de `127.0.0.1` : la passerelle du réseau Docker par laquelle arrive le port publié |
 | `LISTES_INSECURE_HTTP` | `false` | autorise une origine `http://` autre que localhost (réseau local de confiance, voir plus haut) |
+| `LISTES_AUTH_HEADER` | (aucun) | en-tête posé par un proxy d'authentification avec le nom du compte (`Remote-User`) ; cru seulement depuis les relais ci-dessus (voir Intégrations) |
 | `LISTES_DB` | `/data/listes.db` | chemin de la base |
 | `LISTES_ADDR` | `:5240` | adresse d'écoute |
 | `TZ` | (UTC) | fuseau horaire (horodatage des journaux) |

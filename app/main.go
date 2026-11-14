@@ -33,6 +33,9 @@ type config struct {
 	// LISTES_INSECURE_HTTP : origine http:// hors localhost (réseau local de confiance).
 	// Les cookies perdent alors Secure et le préfixe __Host- (voir cookieName).
 	InsecureHTTP bool
+	// LISTES_AUTH_HEADER : en-tête posé par un reverse proxy d'authentification (Authelia,
+	// Authentik : Remote-User), cru seulement depuis LISTES_TRUSTED_PROXIES. Vide : désactivé.
+	AuthHeader string
 }
 
 func loadConfig() config {
@@ -43,6 +46,7 @@ func loadConfig() config {
 		TrustedProxies: []string{"127.0.0.1"},
 		Lang:           os.Getenv("LISTES_LANG"),
 		InsecureHTTP:   envBool("LISTES_INSECURE_HTTP"),
+		AuthHeader:     strings.TrimSpace(os.Getenv("LISTES_AUTH_HEADER")),
 	}
 	for _, ip := range strings.Split(os.Getenv("LISTES_TRUSTED_PROXIES"), ",") {
 		if ip = strings.TrimSpace(ip); net.ParseIP(ip) != nil {
@@ -143,6 +147,9 @@ func serve(cfg config) error {
 	}
 	if cfg.InsecureHTTP {
 		slog.Warn(T("log.insecureHTTP"), "origin", cfg.Origin)
+	}
+	if cfg.AuthHeader != "" {
+		slog.Warn(T("log.authHeader"), "header", cfg.AuthHeader, "trusted", strings.Join(cfg.TrustedProxies, ","))
 	}
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
