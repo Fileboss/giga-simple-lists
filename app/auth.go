@@ -227,10 +227,14 @@ type session struct {
 	Hash     []byte
 	UserID   string
 	UserName string
+	IsAdmin  bool
 	CSRF     string
 	Created  int64
 	LastSeen int64
 }
+
+// maxUserAgent : longueur gardée du User-Agent d'une session (reconnaître ses appareils).
+const maxUserAgent = 200
 
 func tokenHash(token string) []byte {
 	h := sha256.Sum256([]byte(token))
@@ -243,12 +247,16 @@ func randomToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func createSession(q querier, userID string) (string, *session, error) {
+func createSession(q querier, userID, userAgent string) (string, *session, error) {
 	token := randomToken()
 	t := nowMs()
 	s := &session{Hash: tokenHash(token), UserID: userID, CSRF: randomToken(), Created: t, LastSeen: t}
-	_, err := q.Exec(`INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)`,
-		s.Hash, s.UserID, s.CSRF, s.Created, s.LastSeen)
+	userAgent = strings.ToValidUTF8(userAgent, "")
+	if len(userAgent) > maxUserAgent {
+		userAgent = strings.ToValidUTF8(userAgent[:maxUserAgent], "")
+	}
+	_, err := q.Exec(`INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, user_agent) VALUES (?, ?, ?, ?, ?, ?)`,
+		s.Hash, s.UserID, s.CSRF, s.Created, s.LastSeen, userAgent)
 	return token, s, err
 }
 
@@ -264,9 +272,9 @@ func lookupSession(q querier, token string) (*session, bool, error) {
 		return nil, false, errNotFound
 	}
 	s := &session{Hash: tokenHash(token)}
-	err := q.QueryRow(`SELECT s.user_id, u.name, s.csrf_token, s.created_at, s.last_seen_at
+	err := q.QueryRow(`SELECT s.user_id, u.name, u.is_admin, s.csrf_token, s.created_at, s.last_seen_at
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, s.Hash).
-		Scan(&s.UserID, &s.UserName, &s.CSRF, &s.Created, &s.LastSeen)
+		Scan(&s.UserID, &s.UserName, &s.IsAdmin, &s.CSRF, &s.Created, &s.LastSeen)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, errNotFound
 	}

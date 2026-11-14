@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased (proposed: v2.0.0)
+## Unreleased (proposed: v2.1.0)
+
+### Added
+
+- **Accounts managed from the app**, no more `docker exec`:
+  - admin role; the first account is an admin, created through a single-use link written to the
+    logs at first start;
+  - admin page: invitation links (single use, 7 days, optionally admin), password reset links
+    (24 h), make or remove admin, sign out everywhere, delete an account; at least one admin is kept;
+  - "Account" page: change password (signs out other devices), signed-in devices with sign-out;
+  - command line: `listes user invite [--admin]`, `listes user admin <name> [--revoke]`.
+
+### Upgrading
+
+- The database is migrated at startup: the oldest account becomes the admin. Sessions are kept.
+
+## v2.0.0 (2026-11-14)
 
 ### Breaking
 

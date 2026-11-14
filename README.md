@@ -22,6 +22,8 @@ list is just a series of checkboxes, always editable. One static Go binary, one 
 - **Several accounts, private or shared lists.** A list is private by default; the "Share" box makes
   it visible to every account on the instance, who can then rename it and edit its items. Colour,
   sharing and deletion stay with its owner.
+- **Accounts managed from the app**: invitation links, an admin page, and an "Account" page to change
+  one's password and sign out devices. No command line needed.
 - **Categories**: typing `# Fruit` creates a heading that groups the items below it (one level).
   It cannot be checked, is struck through once all its items are checked, and moves with them.
   Pasting several lines adds one item per line.
@@ -122,8 +124,11 @@ networks:
 ```sh
 mkdir -p data && sudo chown 1000:1000 data
 docker compose up -d
-docker compose exec listes listes user add alice   # prints a generated password, once
+docker compose logs listes | grep invite   # single-use link to create the first (admin) account
 ```
+
+Open that link, pick a name and a password: this first account is an admin, and invites everyone
+else from the app. The link is renewed at each start until an account exists, and expires after 24 h.
 
 Then put it behind a reverse proxy that serves it over HTTPS (see [Reverse proxy](#reverse-proxy)).
 Session cookies are `Secure`.
@@ -150,14 +155,28 @@ The option is refused with an `https://` origin.
 
 ## Accounts
 
-There is no sign-up page: accounts are managed from the command line.
+There is no open sign-up: people join through invitation links. Everything is done from the app:
+
+- **Account** (your name, at the bottom of the app): change your password, see the devices you are
+  signed in on and sign them out. Changing the password signs out every other device.
+- **Admin** (admins only): create a single-use invitation link, valid 7 days, optionally for an
+  admin; the person picks a name and a password. For each account: a password reset link (valid
+  24 h, the admin never sees the password), make or remove admin, sign out everywhere, delete the
+  account with its lists. The instance always keeps at least one admin.
+
+Links are shown once and work once; only their hash is stored. On an instance created before
+accounts could be managed in the app, the oldest account becomes the admin.
+
+The command line is still there, for scripts or to regain access:
 
 ```sh
-docker compose exec listes listes user add <name>       # prints a generated password, once
+docker compose exec listes listes user invite [--admin]   # prints a single-use invitation link
+docker compose exec listes listes user add <name>         # prints a generated password, once (the first account is an admin)
 docker compose exec -T listes listes user add <name> --password-stdin <<<'chosen password (15 characters min.)'
-docker compose exec listes listes user reset <name>     # new password, sessions revoked
+docker compose exec listes listes user reset <name>       # new password, sessions revoked
+docker compose exec listes listes user admin <name> [--revoke]
 docker compose exec listes listes user list
-docker compose exec listes listes sessions revoke-all   # signs out every device
+docker compose exec listes listes sessions revoke-all     # signs out every device
 ```
 
 ## Backup

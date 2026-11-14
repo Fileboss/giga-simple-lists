@@ -1,0 +1,88 @@
+{{template "head" .}}
+<main class="page-box">
+  {{template "back" .}}
+  <h1>{{t "admin.title"}}</h1>
+  {{template "notices" .}}
+
+  {{if .NewLink}}
+  <section class="new-link" aria-live="polite">
+    <h2>{{.NewLinkFor}}</h2>
+    <input class="link-field" type="text" value="{{.NewLink}}" readonly aria-label="{{t "admin.link"}}">
+    <p class="muted">{{t "admin.linkOnce"}}</p>
+  </section>
+  {{end}}
+
+  <section>
+    <h2>{{t "admin.accounts"}}</h2>
+    <ul class="rows">
+      {{range .Accounts}}
+      <li>
+        <div class="row-main">
+          <span>{{.Name}}{{if .IsAdmin}} <span class="badge">{{t "admin.badge"}}</span>{{end}}{{if eq .ID $.UserID}} <span class="muted">· {{t "admin.you"}}</span>{{end}}</span>
+          <small>{{if .LastSeen}}{{tf "admin.lastActive" (ago .LastSeen)}}{{else}}{{t "admin.neverSignedIn"}}{{end}} · {{tf "admin.devices" .Sessions}} · {{tf "admin.created" (day .CreatedAt)}}</small>
+        </div>
+        <details class="actions">
+          <summary>{{t "admin.manage"}}</summary>
+          <div class="action-list">
+            <form method="post" action="/admin/users/{{.ID}}/reset">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit">{{t "admin.resetLink"}}</button>
+            </form>
+            <form method="post" action="/admin/users/{{.ID}}/role">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              {{if .IsAdmin}}<input type="hidden" name="admin" value="0"><button type="submit">{{t "admin.removeAdmin"}}</button>
+              {{else}}<input type="hidden" name="admin" value="1"><button type="submit">{{t "admin.makeAdmin"}}</button>{{end}}
+            </form>
+            {{if .Sessions}}
+            <form method="post" action="/admin/users/{{.ID}}/sign-out">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit">{{if eq .ID $.UserID}}{{t "account.signOutOthers"}}{{else}}{{t "admin.signOut"}}{{end}}</button>
+            </form>
+            {{end}}
+            {{if ne .ID $.UserID}}
+            <details class="confirm-delete">
+              <summary class="danger">{{t "admin.delete"}}</summary>
+              <form method="post" action="/admin/users/{{.ID}}/delete">
+                <input type="hidden" name="csrf" value="{{$.CSRF}}">
+                <p>{{tf "admin.deleteConfirm" .Name}}</p>
+                <button type="submit" class="danger-fill">{{tf "admin.deleteButton" .Name}}</button>
+              </form>
+            </details>
+            {{end}}
+          </div>
+        </details>
+      </li>
+      {{end}}
+    </ul>
+  </section>
+
+  <section>
+    <h2>{{t "admin.invite"}}</h2>
+    <p class="muted">{{t "admin.inviteHelp"}}</p>
+    <form method="post" action="/admin/invites" class="inline-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="check-label"><input type="checkbox" name="admin"> {{t "admin.asAdmin"}}</label>
+      <button type="submit" class="primary">{{t "admin.createLink"}}</button>
+    </form>
+
+    {{if .Links}}
+    <h3>{{t "admin.pending"}}</h3>
+    <ul class="rows">
+      {{range .Links}}
+      <li>
+        <div class="row-main">
+          <span>{{if eq .Kind "reset"}}{{tf "admin.resetFor" .UserName}}{{else if .IsAdmin}}{{t "admin.adminInvite"}}{{else}}{{t "admin.inviteLink"}}{{end}}</span>
+          <small>{{if .CreatedBy}}{{tf "admin.by" .CreatedBy}}{{else}}{{t "admin.bySetup"}}{{end}} · {{until .ExpiresAt}}</small>
+        </div>
+        <form method="post" action="/admin/invites/{{.ID}}/delete">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button type="submit">{{t "admin.revokeLink"}}</button>
+        </form>
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+  </section>
+</main>
+</body>
+</html>

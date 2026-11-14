@@ -69,7 +69,7 @@ func (h *harness) addUser(name string) testUser {
 // session ouvre une session directement en base (la connexion elle-même est testée à part).
 func (h *harness) session(u testUser) *testSession {
 	h.t.Helper()
-	token, s, err := createSession(h.db, u.ID)
+	token, s, err := createSession(h.db, u.ID, "Mozilla/5.0 (test)")
 	if err != nil {
 		h.t.Fatal(err)
 	}

@@ -27,6 +27,29 @@ func adminCommand(out io.Writer, in io.Reader, db *sql.DB, args []string) error 
 		}
 		fromStdin := len(args) > 3 && args[3] == "--password-stdin"
 		return setUser(out, in, db, args[2], args[1] == "add", fromStdin)
+	case "user admin":
+		if len(args) < 3 {
+			return errors.New(T("cli.usage"))
+		}
+		revoke := len(args) > 3 && args[3] == "--revoke"
+		u, err := userByName(db, args[2])
+		if errors.Is(err, errNotFound) {
+			return fmt.Errorf(T("cli.notFound"), args[2])
+		}
+		if err != nil {
+			return err
+		}
+		if err := setAdmin(db, u.ID, !revoke); errors.Is(err, errLastAdmin) {
+			return errors.New(T("cli.lastAdmin"))
+		} else if err != nil {
+			return err
+		}
+		if revoke {
+			fmt.Fprintf(out, T("cli.adminRemoved"), u.Name)
+		} else {
+			fmt.Fprintf(out, T("cli.adminSet"), u.Name)
+		}
+		return nil
 	case "user list":
 		rows, err := db.Query(`SELECT u.name, (SELECT count(*) FROM sessions s WHERE s.user_id = u.id) FROM users u ORDER BY u.name`)
 		if err != nil {
@@ -97,8 +120,13 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 		if taken {
 			return fmt.Errorf(T("cli.exists"), name)
 		}
-		_, err = tx.Exec(`INSERT INTO users (id, name, password_hash, created_at) VALUES (?, ?, ?, ?)`,
-			newID(), name, hash, nowMs())
+		// Le premier compte est admin : une instance a toujours quelqu'un pour gérer les comptes.
+		var n int
+		if err = tx.QueryRow(`SELECT count(*) FROM users`).Scan(&n); err != nil {
+			return err
+		}
+		_, err = tx.Exec(`INSERT INTO users (id, name, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, ?)`,
+			newID(), name, hash, nowMs(), n == 0)
 		if isConstraint(err) {
 			return fmt.Errorf(T("cli.exists"), name)
 		}
@@ -130,6 +158,20 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 	if !fromStdin {
 		fmt.Fprintf(out, T("cli.passwordOnce"), password)
 	}
+	return nil
+}
+
+// inviteCommand : lien d'invitation à usage unique, sans passer par la page
+// d'administration (instance sans admin joignable, script…).
+func inviteCommand(out io.Writer, db *sql.DB, origin string, admin bool) error {
+	if origin == "" {
+		return errors.New(T("err.origin"))
+	}
+	token, err := createInvitation(db, kindInvite, admin, "", "", inviteTTL)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, T("cli.inviteLink"), origin+"/invite/"+token)
 	return nil
 }
 

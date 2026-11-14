@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -95,6 +96,9 @@ func run(args []string) error {
 			return err
 		}
 		defer db.Close()
+		if len(args) > 1 && args[0] == "user" && args[1] == "invite" {
+			return inviteCommand(os.Stdout, db, cfg.Origin, slices.Contains(args[2:], "--admin"))
+		}
 		return adminCommand(os.Stdout, os.Stdin, db, args)
 	case "backup":
 		db, err := openBackupSource(cfg.DBPath)
@@ -144,6 +148,12 @@ func serve(cfg config) error {
 	}
 	defer db.Close()
 
+	// Aucun compte : lien de création du premier (admin), dans les journaux.
+	if token, err := setupInvitation(db); err != nil {
+		return err
+	} else if token != "" {
+		slog.Warn(T("log.setup"), "url", cfg.Origin+"/invite/"+token)
+	}
 	app := newApp(cfg, db)
 	srv := &http.Server{
 		Addr:    cfg.Addr,
