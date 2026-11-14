@@ -583,9 +583,9 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 .c-gris { background-color: #efefec; --tint: #efefec; --deep: #e6e6e1; }
 .list.list { background-color: var(--deep); } /* l'emporte sur .c-<clé> */
 
-/* Mode sombre, selon le réglage de l'appareil (aucun bouton). Mêmes contrastes que le
-   mode clair : texte ≥ 7:1 et cochés ≥ 4,5:1 sur chaque couleur (colors.go, vérifié par
-   TestColorContrast). Le bandeau et les boutons pleins s'inversent d'eux-mêmes
+/* Mode sombre, selon le réglage de l'appareil (aucun bouton). Fond neutre et couleur de
+   liste en accent ; mêmes contrastes que le mode clair : texte ≥ 7:1 et cochés ≥ 4,5:1
+   sur les catégories (colors.go, vérifié par TestColorContrast). Le bandeau et les boutons pleins s'inversent d'eux-mêmes
    (--paper sur --shade, --paper sur --ink). */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -603,14 +603,28 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
     --undo-accent: #6b5a1e;
     --undo-hover: rgba(29, 29, 27, .08);
   }
-  .c-jaune { background-color: #383221; --tint: #383221; --deep: #2b2718; }
-  .c-peche { background-color: #3a2c25; --tint: #3a2c25; --deep: #2d221d; }
-  .c-rose { background-color: #3a2b30; --tint: #3a2b30; --deep: #2d2125; }
-  .c-lavande { background-color: #2f2c3c; --tint: #2f2c3c; --deep: #24222f; }
-  .c-bleu { background-color: #27313d; --tint: #27313d; --deep: #1e2630; }
-  .c-menthe { background-color: #26362e; --tint: #26362e; --deep: #1d2a24; }
-  .c-sauge { background-color: #2e3626; --tint: #2e3626; --deep: #232a1d; }
-  .c-gris { background-color: #31312e; --tint: #31312e; --deep: #262624; }
+  .c-jaune { background-color: #e3c66f; --list-accent: #e3c66f; }
+  .c-peche { background-color: #eba383; --list-accent: #eba383; }
+  .c-rose { background-color: #e795ad; --list-accent: #e795ad; }
+  .c-lavande { background-color: #ab9de6; --list-accent: #ab9de6; }
+  .c-bleu { background-color: #80b4e6; --list-accent: #80b4e6; }
+  .c-menthe { background-color: #72c9a3; --list-accent: #72c9a3; }
+  .c-sauge { background-color: #a6bd8c; --list-accent: #a6bd8c; }
+  .c-gris { background-color: #b8b6ae; --list-accent: #b8b6ae; }
+  /* Fond neutre : celui de la page sur téléphone (aucune bande plus sombre en haut ni en
+     bas), une carte à peine plus claire sur grand écran ; catégories d'un gris un cran
+     au-dessus (darkCategory). La couleur de la liste n'est plus qu'un accent : pastille,
+     cases cochées. */
+  .list.list { --deep: var(--paper); --tint: #2e2e2b; --accent: var(--list-accent); }
+  .list input[type="checkbox"]:checked { background-image: url("/static/check-dark.svg"); }
+  .list .switcher::before {
+    content: "";
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--list-accent);
+  }
 }
 
 /* Connexion */
@@ -878,4 +892,10 @@ a.link:hover { color: var(--ink); }
   .bar { padding-left: 24px; padding-right: 24px; }
   .list { margin: 16px auto; width: 100%; max-width: 640px; border-radius: 20px; padding: 32px 36px 40px; }
   .title { font-size: 28px; }
+}
+
+/* Mode sombre sur grand écran : la liste est une carte neutre à peine plus claire que la
+   page, marquée en haut par l'accent de sa couleur. */
+@media (prefers-color-scheme: dark) and (min-width: 700px) {
+  .list.list { --deep: #232321; border: 1px solid var(--line); box-shadow: inset 0 3px 0 var(--list-accent); }
 }

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Dark mode: lists and categories now use neutral greys, and each list's colour becomes a bright
+  accent (dots, checked boxes, colour picker, a line at the top of the card on desktop). The eight
+  colours are easy to tell apart again, and the list background matches the page, so no darker band
+  shows above or below it on phones. Light mode is unchanged.
+
+## v2.2.1 (2026-11-15)
+
 ### Fixed
 
 - Installed app on Android: an empty list no longer needs scrolling to reach the bottom of the page

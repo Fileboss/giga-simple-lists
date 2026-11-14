@@ -3,9 +3,9 @@
 // L'API et le flux SSE ne passent pas par ici : app.js garde sa propre copie des listes.
 'use strict';
 
-const CACHE = 'listes-v6';
+const CACHE = 'listes-v7';
 const PAGE = '/'; // la page de l'appli : propre à la session, effacée à la déconnexion
-const ASSETS = ['/static/app.js', '/static/public.js', '/static/app.css', '/static/check.svg', '/static/icon.svg',
+const ASSETS = ['/static/app.js', '/static/public.js', '/static/app.css', '/static/check.svg', '/static/check-dark.svg', '/static/icon.svg',
   '/static/icon-192.png', '/manifest.webmanifest'];
 const TIMEOUT = 4000; // réseau qui ne répond pas (supermarché) : même seuil que le bandeau d'app.js
 

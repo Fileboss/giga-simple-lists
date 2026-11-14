@@ -324,25 +324,29 @@ func TestColorContrast(t *testing.T) {
 				t.Errorf("%s %s : gris des cochés %.2f:1", c.Key, bg, r)
 			}
 		}
-		for _, bg := range []string{c.DarkHex, c.DarkDeep} {
-			if r := contrast(darkInkColor, bg); r < 7 {
-				t.Errorf("%s %s (sombre) : texte %.2f:1", c.Key, bg, r)
-			}
-			if r := contrast(darkCheckedGray, bg); r < 4.5 {
-				t.Errorf("%s %s (sombre) : gris des cochés %.2f:1", c.Key, bg, r)
-			}
+		if r := contrast(darkCheckMark, c.DarkAccent); r < 4.5 {
+			t.Errorf("%s %s (sombre) : coche %.2f:1", c.Key, c.DarkAccent, r)
 		}
 		rule := fmt.Sprintf(".c-%s { background-color: %s; --tint: %s; --deep: %s; }", c.Key, c.Hex, c.Hex, c.Deep)
 		if !strings.Contains(string(css), rule) {
 			t.Errorf("app.css : règle %q absente", rule)
 		}
-		rule = fmt.Sprintf(".c-%s { background-color: %s; --tint: %s; --deep: %s; }", c.Key, c.DarkHex, c.DarkHex, c.DarkDeep)
+		rule = fmt.Sprintf(".c-%s { background-color: %s; --list-accent: %s; }", c.Key, c.DarkAccent, c.DarkAccent)
 		if !strings.Contains(dark, rule) {
 			t.Errorf("app.css, mode sombre : règle %q absente", rule)
 		}
 	}
 	if !strings.Contains(string(css), "--ink: "+inkColor+";") || !strings.Contains(string(css), "--muted: "+checkedGray+";") {
 		t.Error("app.css : --ink ou --muted différent de colors.go")
+	}
+	if contrast(darkInkColor, darkCategory) < 7 || contrast(darkCheckedGray, darkCategory) < 4.5 {
+		t.Error("catégories en mode sombre : contraste insuffisant")
+	}
+	if !strings.Contains(dark, "--tint: "+darkCategory+";") {
+		t.Error("app.css, mode sombre : --tint différent de darkCategory")
+	}
+	if svg, _ := staticFS.ReadFile("web/static/check-dark.svg"); !strings.Contains(string(svg), darkCheckMark) {
+		t.Error("check-dark.svg : couleur de coche différente de colors.go")
 	}
 	if !strings.Contains(dark, "--ink: "+darkInkColor+";") || !strings.Contains(dark, "--muted: "+darkCheckedGray+";") {
 		t.Error("app.css, mode sombre : --ink ou --muted différent de colors.go")
