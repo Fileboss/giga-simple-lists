@@ -74,7 +74,8 @@ func (a *App) renderAccount(w http.ResponseWriter, status int, s *session, flash
 }
 
 // accountPassword : mot de passe actuel exigé (et compté comme une tentative de
-// connexion : mêmes blocages), puis les autres appareils sont déconnectés.
+// connexion : mêmes blocages), puis toutes les sessions du compte sont révoquées et cet
+// appareil reçoit une nouvelle session : un ancien cookie volé ne sert plus.
 func (a *App) accountPassword(w http.ResponseWriter, r *http.Request, s *session) {
 	ip := clientIP(r, a.cfg.TrustedProxies)
 	current, next := r.PostFormValue("current"), r.PostFormValue("password")
@@ -92,15 +93,26 @@ func (a *App) accountPassword(w http.ResponseWriter, r *http.Request, s *session
 		time.Sleep(d)
 	}
 	if u == nil || u.ID != s.UserID {
-		a.renderAccount(w, http.StatusUnauthorized, s, "", T("err.currentPassword"))
+		msg := T("err.currentPassword")
+		if blocked, _ := loginBlocked(a.db, ipKey(ip)); blocked {
+			msg = T("err.tooManyAttempts")
+		}
+		a.renderAccount(w, http.StatusUnauthorized, s, "", msg)
 		return
 	}
-	revoked, err := a.inTx(func(tx *sql.Tx) ([][]byte, error) { return setPassword(tx, s.UserID, next, s.Hash) })
+	hash := hashPassword(next) // hors du verrou d'écriture : Argon2id prend du temps
+	revoked, err := a.inTx(func(tx *sql.Tx) ([][]byte, error) { return setPassword(tx, s.UserID, hash, nil) })
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	a.closeSessions(revoked)
+	token, ns, err := createSession(a.db, s.UserID, r.UserAgent())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	a.setSessionCookie(w, token, ns)
 	slog.Info(T("log.passwordChanged"), "user", s.UserName, "ip", ip)
 	http.Redirect(w, r, "/account?done=password", http.StatusSeeOther)
 }
@@ -190,15 +202,20 @@ func (a *App) renderInvite(w http.ResponseWriter, status int, inv *invitation, e
 
 func (a *App) invitePost(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r, a.cfg.TrustedProxies)
-	c, err := r.Cookie(a.cookieName(loginCSRFCookie))
-	if !a.sameOrigin(r) || err != nil || r.ParseForm() != nil ||
-		subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.Value)) != 1 {
+	if !a.sameOrigin(r) || r.ParseForm() != nil {
 		writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
 		return
 	}
 	inv, err := lookupInvitation(a.db, r.PathValue("token"))
 	if err != nil {
 		a.renderInviteGone(w, err)
+		return
+	}
+	// Cookie du formulaire expiré (1 h) ou remplacé par la page de connexion d'un autre
+	// onglet : on réaffiche le formulaire avec un nouveau jeton.
+	c, err := r.Cookie(a.cookieName(loginCSRFCookie))
+	if err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.Value)) != 1 {
+		a.renderInvite(w, http.StatusForbidden, inv, T("login.expired"))
 		return
 	}
 	password := r.PostFormValue("password")
@@ -244,6 +261,13 @@ func (a *App) invitePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.closeSessions(revoked)
+	// Navigateur déjà connecté (à un autre compte, ou un admin qui essaie le lien) : son
+	// ancienne session est détruite, comme à la connexion.
+	if old, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
+		if h := tokenHash(old.Value); deleteSession(a.db, h) == nil {
+			a.closeSessions([][]byte{h})
+		}
+	}
 	token, s, err := createSession(a.db, userID, r.UserAgent())
 	if err != nil {
 		writeErr(w, err)

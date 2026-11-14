@@ -171,7 +171,8 @@ type account struct {
 
 func accounts(q querier) ([]account, error) {
 	rows, err := q.Query(`SELECT u.id, u.name, u.is_admin, u.created_at, count(s.token_hash), coalesce(max(s.last_seen_at), 0)
-		FROM users u LEFT JOIN sessions s ON s.user_id = u.id GROUP BY u.id ORDER BY u.name COLLATE NOCASE`)
+		FROM users u LEFT JOIN sessions s ON s.user_id = u.id AND `+liveSession+`
+		GROUP BY u.id ORDER BY u.name COLLATE NOCASE`, sessionCutoffs()...)
 	if err != nil {
 		return nil, err
 	}
@@ -223,20 +224,31 @@ func otherAdmins(q querier, userID string) (int, error) {
 	return n, err
 }
 
-// setAdmin : donner ou retirer le rôle admin, sans jamais retirer le dernier.
-func setAdmin(q querier, userID string, admin bool) error {
-	if !admin {
-		n, err := otherAdmins(q, userID)
-		if err != nil {
+// setAdmin : donner ou retirer le rôle admin, sans jamais retirer le dernier. Le retrait
+// tient en une requête (deux retraits simultanés ne peuvent pas passer tous les deux) et
+// supprime les liens en attente créés par ce compte : il ne peut plus s'en servir pour
+// redevenir admin ou prendre le compte d'un autre.
+func setAdmin(tx *sql.Tx, userID string, admin bool) error {
+	var res sql.Result
+	var err error
+	if admin {
+		res, err = tx.Exec(`UPDATE users SET is_admin = 1 WHERE id = ?`, userID)
+	} else {
+		res, err = tx.Exec(`UPDATE users SET is_admin = 0 WHERE id = ?
+			AND EXISTS (SELECT 1 FROM users WHERE is_admin = 1 AND id <> ?)`, userID, userID)
+	}
+	n, err := rowsAffected(res, err)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		if _, err := accountByID(tx, userID); err != nil {
 			return err
 		}
-		if n == 0 {
-			return errLastAdmin
-		}
+		return errLastAdmin
 	}
-	res, err := q.Exec(`UPDATE users SET is_admin = ? WHERE id = ?`, admin, userID)
-	if n, _ := rowsAffected(res, err); err == nil && n != 1 {
-		return errNotFound
+	if !admin {
+		_, err = tx.Exec(`DELETE FROM invitations WHERE created_by = ?`, userID)
 	}
 	return err
 }
@@ -280,11 +292,11 @@ func deleteUser(tx *sql.Tx, userID string) (shared []*List, sessions [][]byte, e
 	return shared, sessions, err
 }
 
-// setPassword : nouveau mot de passe ; toutes les sessions du compte sont révoquées sauf
+// setPassword : nouveau mot de passe (déjà haché, hors du verrou d'écriture) ; toutes les sessions du compte sont révoquées sauf
 // keep (la session de l'appareil qui fait le changement, ou aucune). Renvoie les sessions
 // révoquées, dont il faut couper les flux temps réel.
-func setPassword(tx *sql.Tx, userID, password string, keep []byte) ([][]byte, error) {
-	res, err := tx.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, hashPassword(password), userID)
+func setPassword(tx *sql.Tx, userID, passwordHash string, keep []byte) ([][]byte, error) {
+	res, err := tx.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
 	if n, _ := rowsAffected(res, err); err == nil && n != 1 {
 		return nil, errNotFound
 	}
@@ -305,11 +317,20 @@ type sessionInfo struct {
 	Current   bool
 }
 
+// liveSession : sessions encore valides (les expirées attendent d'être purgées), avec
+// sessionCutoffs pour paramètres.
+const liveSession = `s.last_seen_at > ? AND s.created_at > ?`
+
+func sessionCutoffs() []any {
+	t := nowMs()
+	return []any{t - sessionIdle.Milliseconds(), t - sessionMax.Milliseconds()}
+}
+
 func sessionID(hash []byte) string { return hex.EncodeToString(hash) }
 
 func userSessions(q querier, userID string, current []byte) ([]sessionInfo, error) {
-	rows, err := q.Query(`SELECT token_hash, user_agent, created_at, last_seen_at FROM sessions
-		WHERE user_id = ? ORDER BY last_seen_at DESC`, userID)
+	rows, err := q.Query(`SELECT token_hash, user_agent, created_at, last_seen_at FROM sessions s
+		WHERE user_id = ? AND `+liveSession+` ORDER BY last_seen_at DESC`, append([]any{userID}, sessionCutoffs()...)...)
 	if err != nil {
 		return nil, err
 	}

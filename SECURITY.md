@@ -41,8 +41,12 @@ second.
 - The admin never sees the password: the person chooses it on the link's page. A reset revokes every
   session of the account.
 - The first account's link is only written to the logs at startup, and only while the instance has
-  no account; it is renewed (the previous one stops working) at each start.
-- The link's page sets `Referrer-Policy: same-origin`, so the token never leaves the site.
+  no account; it is renewed (the previous one stops working) at each start, and dropped as soon as
+  a first account is created from the command line.
+- The links an admin created stop working when that account loses the admin role or is deleted.
+- The link's page sets `Referrer-Policy: same-origin`, so the token is not sent to other sites. Being
+  in the URL, it still lands in the browser history and in the reverse proxy's access logs: hence
+  single use and short expiry.
   (`no-referrer` would make browsers send `Origin: null` with the form, which the CSRF check rejects.)
   Its form is protected like the sign-in form: `Origin` plus a double-submit CSRF token.
 
@@ -50,12 +54,15 @@ second.
 
 - Admin pages answer **404** to any other account, like a list it cannot see, and every request is
   checked server-side. Forms are plain HTML with the same three CSRF protections as the API.
-- The instance always keeps at least one admin: the last one cannot lose the role, and an admin
-  cannot delete their own account.
+- **An admin can take over any account** (with a reset link) and so read its private lists. Give
+  the role only to people you would trust with everyone's lists.
+- The instance always keeps at least one admin: the last one cannot lose the role, even when two
+  admins step down at the same moment, and an admin cannot delete their own account.
 - Deleting an account deletes its lists; its shared lists disappear for everyone in real time, and
   its sessions and real-time streams are cut immediately.
 - Changing one's password requires the current one, counted as a sign-in attempt (same per-IP
-  blocking and per-account slowdown), and signs out every other device.
+  blocking and per-account slowdown), signs out every other device, and gives this device a new
+  session token.
 
 ### Rate limiting
 

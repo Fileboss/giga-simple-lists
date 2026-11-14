@@ -44,8 +44,12 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
 - L'admin ne voit jamais le mot de passe : la personne le choisit sur la page du lien. Un nouveau mot
   de passe révoque toutes les sessions du compte.
 - Le lien du premier compte n'est écrit que dans les journaux, au démarrage, et seulement tant que
-  l'instance n'a aucun compte ; il est renouvelé (l'ancien ne sert plus) à chaque démarrage.
-- La page du lien pose `Referrer-Policy: same-origin` : le jeton ne sort jamais du site.
+  l'instance n'a aucun compte ; il est renouvelé (l'ancien ne sert plus) à chaque démarrage, et
+  supprimé dès qu'un premier compte est créé en ligne de commande.
+- Les liens créés par un admin ne servent plus dès que ce compte perd le rôle admin ou est supprimé.
+- La page du lien pose `Referrer-Policy: same-origin` : le jeton n'est pas envoyé aux autres sites.
+  Comme il est dans l'URL, il finit tout de même dans l'historique du navigateur et les journaux
+  d'accès du reverse proxy : d'où l'usage unique et l'expiration courte.
   (`no-referrer` ferait envoyer `Origin: null` au formulaire, refusé par la protection CSRF.) Son
   formulaire est protégé comme celui de connexion : `Origin` et jeton CSRF en double soumission.
 
@@ -54,12 +58,16 @@ local, ni aux autres services qui tournent à côté. La confidentialité des li
 - Les pages d'administration répondent **404** à tout autre compte, comme une liste qu'il ne voit
   pas, et chaque requête est vérifiée côté serveur. Les formulaires sont du HTML simple, avec les
   trois mêmes protections CSRF que l'API.
-- L'instance garde toujours au moins un admin : le dernier ne peut pas perdre son rôle, et un admin
-  ne peut pas supprimer son propre compte.
+- **Un admin peut prendre n'importe quel compte** (avec un lien de nouveau mot de passe), et donc
+  lire ses listes privées. Ne donner le rôle qu'à des personnes à qui l'on confierait les listes de
+  tout le monde.
+- L'instance garde toujours au moins un admin : le dernier ne peut pas perdre son rôle, même si deux
+  admins se retirent au même moment, et un admin ne peut pas supprimer son propre compte.
 - Supprimer un compte supprime ses listes ; ses listes partagées disparaissent chez tout le monde en
   temps réel, et ses sessions et flux temps réel sont coupés aussitôt.
 - Changer son mot de passe exige l'actuel, compté comme une tentative de connexion (mêmes blocage par
-  IP et ralentissement par compte), et déconnecte tous les autres appareils.
+  IP et ralentissement par compte), déconnecte tous les autres appareils et donne à celui-ci un
+  nouveau jeton de session.
 
 ### Limitation des tentatives
 

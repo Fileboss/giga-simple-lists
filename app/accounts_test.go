@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -267,11 +268,18 @@ func TestAccountPassword(t *testing.T) {
 	if c := change("mauvais", newPassword, newPassword); c != http.StatusUnauthorized {
 		t.Fatalf("mot de passe actuel faux : %d", c)
 	}
-	if c := change(testPassword, newPassword, newPassword); c != http.StatusSeeOther {
-		t.Fatalf("changement : %d", c)
+	w := h.form(s, "/account/password", url.Values{"current": {testPassword}, "password": {newPassword}, "confirm": {newPassword}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("changement : %d", w.Code)
 	}
-	h.expect(http.StatusOK, s, "GET", "/api/state", nil)
+	// Toutes les anciennes sessions tombent, cet appareil reçoit un nouveau cookie.
+	h.expect(http.StatusUnauthorized, s, "GET", "/api/state", nil)
 	h.expect(http.StatusUnauthorized, other, "GET", "/api/state", nil)
+	tok := sessionFrom(w)
+	if tok == "" || tok == s.Token {
+		t.Fatal("pas de nouvelle session pour cet appareil")
+	}
+	h.expect(http.StatusOK, &testSession{Token: tok, User: u}, "GET", "/api/state", nil)
 	if res := h.loginForm("198.51.100.12", "alice", newPassword); res.Code != http.StatusSeeOther {
 		t.Fatal("nouveau mot de passe refusé")
 	}
@@ -335,6 +343,87 @@ func TestLastAdmin(t *testing.T) {
 	}
 	if err := adminCommand(&out, nil, h.db, []string{"user", "admin", "alice"}); err != nil || !isAdmin(t, h.db, "alice") {
 		t.Fatal("CLI : promotion")
+	}
+	// Faute de frappe : refus, pas de promotion.
+	for _, args := range [][]string{{"user", "admin", "carol", "--revok"}, {"user", "admin", "bob", "-r"}, {"user", "admin", "bob", "--revoke", "x"}} {
+		if err := adminCommand(&out, nil, h.db, args); err == nil {
+			t.Fatalf("CLI %v accepté", args)
+		}
+	}
+}
+
+// Deux retraits simultanés ne laissent jamais l'instance sans admin.
+func TestLastAdminConcurrent(t *testing.T) {
+	h := newHarness(t)
+	alice, bob := h.addUser("alice"), h.addUser("bob")
+	for i := 0; i < 50; i++ {
+		h.db.Exec(`UPDATE users SET is_admin = 1`)
+		var wg sync.WaitGroup
+		for _, id := range []string{alice.ID, bob.ID} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				inTx(h.db, func(tx *sql.Tx) error { return setAdmin(tx, id, false) })
+			}()
+		}
+		wg.Wait()
+		var n int
+		h.db.QueryRow(`SELECT count(*) FROM users WHERE is_admin = 1`).Scan(&n)
+		if n != 1 {
+			t.Fatalf("essai %d : %d admin(s)", i, n)
+		}
+	}
+}
+
+// Un admin qui perd son rôle, ou son compte, perd aussi ses liens en attente.
+func TestDemotedAdminLinks(t *testing.T) {
+	h := newHarness(t)
+	root := h.session(h.addUser("root"))
+	malloryUser := h.addUser("mallory")
+	h.form(root, "/admin/users/"+malloryUser.ID+"/role", url.Values{"admin": {"1"}})
+	mallory := h.session(malloryUser)
+	invite := h.newLink(mallory, "/admin/invites", url.Values{"admin": {"on"}})
+	h.form(root, "/admin/users/"+malloryUser.ID+"/role", url.Values{"admin": {"0"}})
+	if w := h.useLink(invite, "mallory2", testPassword); w.Code != http.StatusNotFound {
+		t.Fatalf("lien d'un admin rétrogradé : %d", w.Code)
+	}
+
+	h.form(root, "/admin/users/"+malloryUser.ID+"/role", url.Values{"admin": {"1"}})
+	invite = h.newLink(mallory, "/admin/invites", url.Values{"admin": {"on"}})
+	h.form(root, "/admin/users/"+malloryUser.ID+"/delete", url.Values{})
+	if w := h.useLink(invite, "mallory3", testPassword); w.Code != http.StatusNotFound {
+		t.Fatalf("lien d'un compte supprimé : %d", w.Code)
+	}
+}
+
+// Premier compte créé en ligne de commande : le lien écrit dans les journaux ne sert plus.
+func TestSetupLinkAfterCLI(t *testing.T) {
+	h := newHarness(t)
+	token, _ := setupInvitation(h.db)
+	var out bytes.Buffer
+	if err := adminCommand(&out, strings.NewReader(testPassword+"\n"), h.db, []string{"user", "add", "alice", "--password-stdin"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := h.useLink(token, "eve", testPassword); w.Code != http.StatusNotFound {
+		t.Fatalf("lien de premier compte encore valable : %d", w.Code)
+	}
+}
+
+// Formulaire d'un lien envoyé avec un cookie de formulaire périmé : la page, pas du JSON.
+func TestInviteExpiredForm(t *testing.T) {
+	h := newHarness(t)
+	admin := h.session(h.addUser("alice"))
+	token := h.newLink(admin, "/admin/invites", url.Values{})
+	form := url.Values{"csrf": {"périmé"}, "name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
+	r := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", testOrigin)
+	w := h.serve(r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "<form") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if w := h.useLink(token, "bob", testPassword); w.Code != http.StatusSeeOther {
+		t.Fatalf("lien consommé par un envoi refusé : %d", w.Code)
 	}
 }
 
