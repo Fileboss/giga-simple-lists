@@ -176,12 +176,16 @@ curl -X POST https://listes.example.com/api/v1/items \
 ```
 
 - `list` : le nom de la liste (sans tenir compte de la casse ; tes listes d'abord si deux ont le même
-  nom) ou son identifiant. `text` : l'élément, ajouté à la fin comme avec le champ « Ajouter ».
+  nom) ou son identifiant. Un nom porté par plusieurs listes d'autres comptes répond `409` : il
+  faut alors l'identifiant. `text` : l'élément, ajouté à la fin comme avec le champ « Ajouter ».
   `"category": true` ajoute un titre de catégorie. Réponse `201` avec l'élément ; tous ceux qui
   regardent la liste le voient en direct.
+- `nonce` (facultatif, 32 caractères hexadécimaux en minuscules) : une nouvelle tentative avec le même nonce
+  n'ajoute pas l'élément deux fois.
 - `GET /api/v1/lists` donne les noms et identifiants utilisables, avec le nombre d'éléments à faire.
-- Au plus 60 appels par minute et par compte. Le jeton permet de lire et modifier toutes les listes
-  que voit son compte : range-le dans un coffre à secrets.
+- Au plus 60 appels par minute et par compte. Le jeton permet de voir le nom des listes que voit son
+  compte et d'y ajouter des éléments : range-le dans un coffre à secrets. Changer le mot de passe le
+  révoque.
 
 Home Assistant (`configuration.yaml`), puis appelle `rest_command.ajouter_courses` depuis une
 automatisation ou un assistant vocal :
@@ -194,7 +198,7 @@ rest_command:
     headers:
       Authorization: !secret listes_token
     content_type: application/json
-    payload: '{"list": "Courses", "text": "{{ item }}"}'
+    payload: '{"list": "Courses", "text": {{ item | to_json }}}'
 ```
 
 (`listes_token` dans `secrets.yaml` vaut `Bearer gsl_…`.)
@@ -206,7 +210,9 @@ en-tête, règle `LISTES_AUTH_HEADER=Remote-User`. Une requête qui le porte con
 mot de passe. L'en-tête n'est cru **que** depuis `127.0.0.1` et `LISTES_TRUSTED_PROXIES`, et ne
 désigne qu'un compte existant (les comptes se créent toujours par invitation). À n'utiliser que si
 **tous** les chemins vers l'appli passent par ce proxy et qu'il pose (écrase) toujours l'en-tête ; la
-déconnexion se fait alors au proxy. Voir [SECURITY.fr.md](SECURITY.fr.md).
+déconnexion se fait alors au proxy. Pour que le jeton d'API marche, ne laisse passer sans
+l'authentification du proxy que `/api/v1/` (pas tout `/api/`), et garde le proxy qui retire
+l'en-tête là aussi. Voir [SECURITY.fr.md](SECURITY.fr.md).
 
 ### Export et import
 

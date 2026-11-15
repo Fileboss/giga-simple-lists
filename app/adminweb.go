@@ -139,13 +139,18 @@ func (a *App) adminRole(w http.ResponseWriter, r *http.Request, s *session) {
 }
 
 // adminSignOut : déconnecte tous les appareils du compte (sauf celui de l'admin, s'il
-// s'agit de son propre compte).
+// s'agit de son propre compte) et révoque son jeton d'API.
 func (a *App) adminSignOut(w http.ResponseWriter, r *http.Request, s *session) {
 	u := a.adminUser(w, r, s)
 	if u == nil {
 		return
 	}
-	revoked, err := a.inTx(func(tx *sql.Tx) ([][]byte, error) { return revokeSessions(tx, u.ID, s.Hash) })
+	revoked, err := a.inTx(func(tx *sql.Tx) ([][]byte, error) {
+		if err := deleteAPIToken(tx, u.ID); err != nil {
+			return nil, err
+		}
+		return revokeSessions(tx, u.ID, s.Hash)
+	})
 	if err != nil {
 		writeErr(w, err)
 		return

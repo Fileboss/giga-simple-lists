@@ -108,10 +108,19 @@ func TestExportImport(t *testing.T) {
 		t.Fatalf("liste importée : %+v", imported)
 	}
 
-	for _, bad := range []string{`{"format":"autre","version":1,"lists":[]}`, `pas du json`, `{"format":"giga-simple-lists","version":1,"lists":[],"x":1}`} {
+	for _, bad := range []string{`{"format":"autre","version":1,"lists":[]}`, `pas du json`, `{"format":"giga-simple-lists","version":1,"lists":[],"x":1}`,
+		`{"format":"giga-simple-lists","version":1,"lists":[]} {}`} {
 		if w := h.importForm(carol, bad); w.Code != http.StatusBadRequest {
 			t.Fatalf("import %q : %d", bad, w.Code)
 		}
+	}
+	if w := h.importForm(carol, strings.Repeat(" ", maxImportBytes+1)); w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("import trop gros : %d", w.Code)
+	}
+	// Nom de compte accentué : nom de fichier encodé (RFC 2231).
+	zoe := h.session(h.addUser("zoé"))
+	if cd := h.do(zoe, "GET", "/account/export", nil).Header().Get("Content-Disposition"); !strings.Contains(cd, "filename*=utf-8''giga-simple-lists-zo%C3%A9-") {
+		t.Fatalf("nom de fichier : %s", cd)
 	}
 	// Sans jeton CSRF : refusé.
 	req := httptest.NewRequest("POST", "/account/import", strings.NewReader(""))
@@ -185,6 +194,56 @@ func TestAPIToken(t *testing.T) {
 		}
 	}
 
+	// Schéma insensible à la casse (RFC 6750) ; nonce : une nouvelle tentative n'ajoute rien.
+	low := h.req(nil, "GET", "/api/v1/lists", nil)
+	low.Header.Set("Authorization", "bearer "+token)
+	if c := h.serve(low).Code; c != http.StatusOK {
+		t.Fatalf("bearer en minuscules : %d", c)
+	}
+	nonce := strings.Repeat("ab", 16)
+	var first, again Item
+	for _, out := range []*Item{&first, &again} {
+		w := bearer(h, token, "POST", "/api/v1/items", map[string]any{"list": l.ID, "text": "Eggs", "nonce": nonce})
+		if w.Code != http.StatusCreated || json.Unmarshal(w.Body.Bytes(), out) != nil {
+			t.Fatalf("avec nonce : %d %s", w.Code, w.Body.String())
+		}
+	}
+	if first.ID != again.ID || len(h.state(alice).Lists[0].Items) != 3 {
+		t.Fatalf("nonce rejoué : %s %s", first.ID, again.ID)
+	}
+	// Nom porté par plusieurs listes partagées d'autres comptes : ambigu.
+	carol := h.session(h.addUser("carol"))
+	for _, s := range []*testSession{bob, carol} {
+		sl := h.createList(s, "Hardware")
+		h.expect(http.StatusOK, s, "PATCH", "/api/lists/"+sl.ID, map[string]any{"shared": true})
+	}
+	if c := bearer(h, token, "POST", "/api/v1/items", map[string]any{"list": "hardware", "text": "x"}).Code; c != http.StatusConflict {
+		t.Fatalf("nom ambigu : %d", c)
+	}
+
+	// Un compte compromis ne garde pas son jeton : changement de mot de passe, déconnexion par l'admin.
+	newToken := func(s *testSession) string {
+		m := tokenRe.FindStringSubmatch(h.form(s, "/account/token", url.Values{}).Body.String())
+		if m == nil {
+			t.Fatal("pas de jeton")
+		}
+		return m[1]
+	}
+	bt := newToken(bob)
+	h.form(alice, "/admin/users/"+bob.User.ID+"/sign-out", url.Values{})
+	if c := bearer(h, bt, "GET", "/api/v1/lists", nil).Code; c != http.StatusUnauthorized {
+		t.Fatalf("jeton après « Déconnecter partout » : %d", c)
+	}
+	bob = h.session(bob.User)
+	bt = newToken(bob)
+	pw := "another-long-password-2026"
+	if w := h.form(bob, "/account/password", url.Values{"current": {testPassword}, "password": {pw}, "confirm": {pw}}); w.Code >= 400 {
+		t.Fatalf("mot de passe : %d", w.Code)
+	}
+	if c := bearer(h, bt, "GET", "/api/v1/lists", nil).Code; c != http.StatusUnauthorized {
+		t.Fatalf("jeton après changement de mot de passe : %d", c)
+	}
+
 	h.form(alice, "/account/token", url.Values{}) // remplacé
 	if c := bearer(h, token, "GET", "/api/v1/lists", nil).Code; c != http.StatusUnauthorized {
 		t.Fatalf("ancien jeton : %d", c)
@@ -232,5 +291,52 @@ func TestAuthHeader(t *testing.T) {
 	req.Header.Set("Remote-User", "alice")
 	if w := h.serve(req); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 		t.Fatalf("/login : %d %s", w.Code, w.Header().Get("Location"))
+	}
+
+	// Requête d'une page déjà ouverte (cookie, jeton CSRF en mémoire), via le proxy.
+	open := func(method, path, cookie, csrf, user string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.RemoteAddr = "127.0.0.1:5555"
+		req.Header.Set("Remote-User", user)
+		req.Header.Set("Origin", testOrigin)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("X-CSRF-Token", csrf)
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
+		return h.serve(req)
+	}
+	tok := sessionFrom(w)
+	s, _, err := lookupSession(h.db, tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// /login avec la session du même compte : gardée (les onglets ouverts continuent).
+	if w := open("GET", "/login", tok, "", "alice"); w.Code != http.StatusSeeOther || sessionFrom(w) != "" {
+		t.Fatalf("/login, session gardée : %d %q", w.Code, sessionFrom(w))
+	}
+	if c := open("POST", "/api/lists", tok, s.CSRF, "alice").Code; c == http.StatusUnauthorized || c == http.StatusForbidden {
+		t.Fatalf("écriture après /login : %d", c)
+	}
+	// Session révoquée : l'API répond 401 (l'appli repasse par /login et recharge la page)
+	// au lieu d'ouvrir une session dont la page n'a pas le jeton CSRF (403, écritures perdues).
+	deleteSession(h.db, s.Hash)
+	for _, m := range []string{"GET /api/events", "GET /api/state", "POST /api/lists"} {
+		method, path, _ := strings.Cut(m, " ")
+		if w := open(method, path, tok, s.CSRF, "alice"); w.Code != http.StatusUnauthorized || sessionFrom(w) != "" {
+			t.Fatalf("%s, session révoquée : %d %q", m, w.Code, sessionFrom(w))
+		}
+	}
+	// Autre compte derrière le proxy (cookie d'alice, en-tête de bob) : jamais servi en alice.
+	h.addUser("bob")
+	tok = sessionFrom(page("127.0.0.1", "alice"))
+	if c := open("GET", "/api/state", tok, "", "bob").Code; c != http.StatusUnauthorized {
+		t.Fatalf("API, autre compte : %d", c)
+	}
+	w = open("GET", "/login", tok, "", "bob")
+	nt := sessionFrom(w)
+	if ns, _, err := lookupSession(h.db, nt); w.Code != http.StatusSeeOther || err != nil || ns.UserName != "bob" {
+		t.Fatalf("/login, autre compte : %d %v", w.Code, err)
+	}
+	if _, _, err := lookupSession(h.db, tok); err == nil {
+		t.Fatal("session d'alice gardée")
 	}
 }

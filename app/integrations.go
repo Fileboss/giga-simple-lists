@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"slices"
@@ -39,7 +40,11 @@ func duplicateList(tx *sql.Tx, userID, listID, nonce string) (*List, bool, error
 		name = name[:maxListName]
 	}
 	l, created, err := createList(tx, userID, nonce, string(name), src.Color, false, 0)
-	if err != nil || !created {
+	if err != nil {
+		return nil, false, err
+	}
+	if !created { // nonce déjà vu (réponse perdue, nouveau clic) : la copie déjà faite
+		l.Items, err = loadItems(tx, l.ID)
 		return l, false, err
 	}
 	t := nowMs()
@@ -131,7 +136,8 @@ func (a *App) accountExport(w http.ResponseWriter, r *http.Request, s *session) 
 		out.Lists = append(out.Lists, el)
 	}
 	name := fmt.Sprintf("giga-simple-lists-%s-%s.json", s.UserName, now().Format("2006-01-02"))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	// filename*= (RFC 2231) pour un nom de compte accentué.
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -179,7 +185,15 @@ func importLists(tx *sql.Tx, userID string, f exportFile) ([]*List, error) {
 }
 
 func (a *App) accountImport(w http.ResponseWriter, r *http.Request, s *session) {
-	file, _, err := r.FormFile("file")
+	file, hdr, err := r.FormFile("file")
+	var mbe *http.MaxBytesError
+	if errors.As(err, &mbe) || err == nil && hdr.Size > maxImportBytes {
+		if file != nil {
+			file.Close()
+		}
+		a.renderAccount(w, http.StatusRequestEntityTooLarge, s, "", T("err.importTooLarge"))
+		return
+	}
 	if err != nil {
 		a.renderAccount(w, http.StatusBadRequest, s, "", T("err.importFile"))
 		return
@@ -188,7 +202,7 @@ func (a *App) accountImport(w http.ResponseWriter, r *http.Request, s *session) 
 	var f exportFile
 	dec := json.NewDecoder(io.LimitReader(file, maxImportBytes))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&f); err != nil {
+	if err := dec.Decode(&f); err != nil || dec.More() {
 		a.renderAccount(w, http.StatusBadRequest, s, "", T("err.importFormat"))
 		return
 	}
@@ -236,6 +250,13 @@ func hasAPIToken(q querier, userID string) (created int64, lastUsed int64, ok bo
 
 // newAPIToken remplace le jeton du compte (l'ancien cesse de marcher) et le renvoie : il
 // n'est affiché qu'une fois.
+// deleteAPIToken révoque le jeton d'API du compte : à la demande, et avec ses sessions quand
+// le mot de passe change ou qu'un admin le déconnecte (un compte compromis ne garde rien).
+func deleteAPIToken(q querier, userID string) error {
+	_, err := q.Exec(`DELETE FROM api_tokens WHERE user_id = ?`, userID)
+	return err
+}
+
 func newAPIToken(q querier, userID string) (string, error) {
 	token := apiTokenPrefix + randomToken()
 	_, err := q.Exec(`INSERT INTO api_tokens (user_id, token_hash, created_at) VALUES (?, ?, ?)
@@ -260,7 +281,7 @@ func (a *App) accountNewToken(w http.ResponseWriter, r *http.Request, s *session
 }
 
 func (a *App) accountRevokeToken(w http.ResponseWriter, r *http.Request, s *session) {
-	if _, err := a.db.Exec(`DELETE FROM api_tokens WHERE user_id = ?`, s.UserID); err != nil {
+	if err := deleteAPIToken(a.db, s.UserID); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -270,8 +291,8 @@ func (a *App) accountRevokeToken(w http.ResponseWriter, r *http.Request, s *sess
 // apiTokenUser : le compte du jeton « Authorization: Bearer gsl_… », ou nil.
 func apiTokenUser(q querier, r *http.Request) (*session, error) {
 	auth := r.Header.Get("Authorization")
-	token, ok := strings.CutPrefix(auth, "Bearer ")
-	if !ok || !strings.HasPrefix(token, apiTokenPrefix) || len(token) > 100 {
+	scheme, token, ok := strings.Cut(auth, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || !strings.HasPrefix(token, apiTokenPrefix) || len(token) > 100 {
 		return nil, errNotFound
 	}
 	s := &session{}
@@ -337,8 +358,12 @@ func (a *App) apiV1Lists(w http.ResponseWriter, r *http.Request, s *session) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// errAmbiguous : aucune de ses listes ne porte ce nom, mais plusieurs listes partagées, oui.
+var errAmbiguous = errors.New("ambiguous list name")
+
 // findList : la liste visible désignée par son identifiant, ou par son nom (sans tenir
-// compte de la casse ; à nom égal, ses propres listes d'abord).
+// compte de la casse ; à nom égal, ses propres listes d'abord). Un nom porté par plusieurs
+// listes partagées par d'autres est ambigu : il faut alors l'identifiant.
 func findList(q querier, userID, ref string) (*List, error) {
 	ref = strings.TrimSpace(ref)
 	if validID(ref) {
@@ -350,17 +375,30 @@ func findList(q querier, userID, ref string) (*List, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := slices.IndexFunc(lists, func(l *List) bool { return strings.EqualFold(l.Name, ref) })
-	if i < 0 {
-		return nil, errNotFound
+	var found []*List
+	for _, l := range lists {
+		if strings.EqualFold(l.Name, ref) {
+			if l.OwnerID == userID {
+				return l, nil
+			}
+			found = append(found, l)
+		}
 	}
-	return lists[i], nil
+	switch len(found) {
+	case 0:
+		return nil, errNotFound
+	case 1:
+		return found[0], nil
+	}
+	return nil, errAmbiguous
 }
 
 // apiV1AddItem : {"list": "Courses", "text": "lait"} ajoute un élément à la fin de la
-// liste, comme le champ « Ajouter » ; les autres le voient en temps réel.
+// liste, comme le champ « Ajouter » ; les autres le voient en temps réel. Un "nonce"
+// facultatif rend l'appel rejouable sans doublon (nouvelle tentative après un délai dépassé).
 func (a *App) apiV1AddItem(w http.ResponseWriter, r *http.Request, s *session) {
 	var in struct {
+		Nonce    string `json:"nonce"`
 		List     string `json:"list"`
 		Text     string `json:"text"`
 		Category bool   `json:"category"`
@@ -376,12 +414,16 @@ func (a *App) apiV1AddItem(w http.ResponseWriter, r *http.Request, s *session) {
 			return nil, err
 		}
 		var created bool
-		it, l, created, err = createItem(tx, s.UserID, l.ID, "", in.Text, in.Category)
+		it, l, created, err = createItem(tx, s.UserID, l.ID, in.Nonce, in.Text, in.Category)
 		if err != nil || !created {
 			return nil, err
 		}
 		return []event{newEvent(evItem, it, toViewersOf(l))}, nil
 	})
+	if errors.Is(err, errAmbiguous) {
+		writeJSON(w, http.StatusConflict, apiError{T("err.listAmbiguous")})
+		return
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -448,7 +490,9 @@ func userByNameFold(q querier, name string) (*user, error) {
 // détruit celle d'un autre compte que portait le navigateur).
 func (a *App) headerSession(w http.ResponseWriter, r *http.Request, u *user) (*session, error) {
 	if old, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
-		deleteSession(a.db, tokenHash(old.Value))
+		if h := tokenHash(old.Value); deleteSession(a.db, h) == nil {
+			a.closeSessions([][]byte{h})
+		}
 	}
 	token, s, err := createSession(a.db, u.ID, r.UserAgent())
 	if err != nil {

@@ -216,11 +216,14 @@ curl -X POST https://lists.example.com/api/v1/items \
 ```
 
 - `list`: the list's name (case-insensitive; your own lists first if two share a name) or its id.
+  A name shared by several lists of other accounts answers `409`: use the id then.
   `text`: the item, added at the end like the "Add" field. `"category": true` adds a heading.
   Answers `201` with the item; everyone viewing the list sees it live.
+- `nonce` (optional, 32 lowercase hex characters): a retry with the same nonce does not add the item
+  twice.
 - `GET /api/v1/lists` lists the names and ids you can use, with their number of items left.
-- At most 60 calls per minute per account. The token can read and edit every list its account sees:
-  keep it in a secrets store.
+- At most 60 calls per minute per account. The token can see the names of the lists its account
+  sees and add items to them: keep it in a secrets store. Changing the password revokes it.
 
 Home Assistant (`configuration.yaml`), then call `rest_command.add_to_groceries` from an automation
 or a voice assistant:
@@ -233,7 +236,7 @@ rest_command:
     headers:
       Authorization: !secret lists_token
     content_type: application/json
-    payload: '{"list": "Groceries", "text": "{{ item }}"}'
+    payload: '{"list": "Groceries", "text": {{ item | to_json }}}'
 ```
 
 (`lists_token` in `secrets.yaml` is `Bearer gsl_…`.)
@@ -245,7 +248,9 @@ a header, set `LISTES_AUTH_HEADER=Remote-User`. A request carrying it signs that
 a password. The header is trusted **only** from `127.0.0.1` and `LISTES_TRUSTED_PROXIES`, and only
 names an existing account (accounts are still created by invitation). Use it only if **every** path
 to the app goes through that proxy and the proxy always sets (overwrites) the header; signing out
-then happens at the proxy. See [SECURITY.md](SECURITY.md).
+then happens at the proxy. To keep the API token working, let only `/api/v1/` through without the
+proxy's authentication (not all of `/api/`), and keep the proxy removing the header there too.
+See [SECURITY.md](SECURITY.md).
 
 ### Export and import
 

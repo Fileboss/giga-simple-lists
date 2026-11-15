@@ -145,8 +145,9 @@ old browsers and configuration mistakes.
 - **API token**: one per account, created on the "Account" page, shown once; only its SHA-256 is
   stored. Sent as `Authorization: Bearer gsl_…`, it is accepted **only** on `/api/v1/*` (add an item,
   list the lists), and those routes accept nothing else: no cookie, so no CSRF to worry about (a
-  browser never sends that header by itself). It can read and edit every list its account sees.
-  Replacing or revoking it takes effect at once. At most 60 calls per minute per account.
+  browser never sends that header by itself). It can see the names of the lists its account sees and add items to them.
+  Replacing or revoking it takes effect at once. Changing the password, a reset link and an admin
+  "Sign out everywhere" revoke it too, along with the sessions. At most 60 calls per minute per account.
 - **Authentication header** (`LISTES_AUTH_HEADER`, off by default): the named account is signed in
   without a password. The header is read only on connections from `127.0.0.1` and
   `LISTES_TRUSTED_PROXIES`, like `X-Forwarded-For`, and only matches an existing account. Anything

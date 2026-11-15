@@ -19,17 +19,20 @@ type loginPageData struct {
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	if u := a.headerUser(r); u != nil { // déjà authentifié par le reverse proxy
+	var current *session
+	if c, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
+		current, _, _ = lookupSession(a.db, c.Value)
+	}
+	// Déjà authentifié par le reverse proxy : on garde la session de ce compte s'il en a
+	// une (sinon un simple lien vers /login casserait les onglets ouverts).
+	if u := a.headerUser(r); u != nil && (current == nil || current.UserID != u.ID) {
 		if _, err := a.headerSession(w, r, u); err == nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-	}
-	if c, err := r.Cookie(a.cookieName(sessionCookie)); err == nil {
-		if _, _, err := lookupSession(a.db, c.Value); err == nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
+	} else if current != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 	a.renderLogin(w, http.StatusOK, "")
 }

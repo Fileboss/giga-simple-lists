@@ -154,9 +154,10 @@ couvrent les navigateurs anciens et les erreurs de configuration.
 - **Jeton d'API** : un par compte, créé dans « Mon compte », affiché une seule fois ; seul son
   SHA-256 est en base. Envoyé en `Authorization: Bearer gsl_…`, il n'est accepté **que** sur
   `/api/v1/*` (ajouter un élément, lister les listes), et ces routes n'acceptent rien d'autre : pas de
-  cookie, donc pas de CSRF (un navigateur n'envoie jamais cet en-tête de lui-même). Il permet de lire
-  et modifier toutes les listes que voit son compte. Le remplacer ou le révoquer prend effet
-  aussitôt. Au plus 60 appels par minute et par compte.
+  cookie, donc pas de CSRF (un navigateur n'envoie jamais cet en-tête de lui-même). Il permet de voir le
+  nom des listes que voit son compte et d'y ajouter des éléments. Le remplacer ou le révoquer prend effet
+  aussitôt. Changer le mot de passe, un lien de réinitialisation et « Déconnecter partout » côté admin
+  le révoquent aussi, avec les sessions. Au plus 60 appels par minute et par compte.
 - **En-tête d'authentification** (`LISTES_AUTH_HEADER`, désactivé par défaut) : le compte nommé est
   connecté sans mot de passe. L'en-tête n'est lu que sur les connexions venant de `127.0.0.1` et de
   `LISTES_TRUSTED_PROXIES`, comme `X-Forwarded-For`, et ne désigne qu'un compte existant. Tout ce qui

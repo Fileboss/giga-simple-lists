@@ -149,6 +149,9 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 			_, err = tx.Exec(`DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE name = ?)`, name)
 		}
 		if err == nil {
+			_, err = tx.Exec(`DELETE FROM api_tokens WHERE user_id = (SELECT id FROM users WHERE name = ?)`, name)
+		}
+		if err == nil {
 			_, err = tx.Exec(`DELETE FROM login_attempts WHERE key = ?`, userKey(name))
 		}
 		if err == nil { // un lien de réinitialisation en attente ne sert plus
