@@ -63,14 +63,26 @@
 
     <section>
       {{template "section-head" (list (t "account.data") (t "account.dataHelp"))}}
-      <form method="post" action="/account/import" enctype="multipart/form-data" class="card card-inline">
-        <input type="hidden" name="csrf" value="{{.CSRF}}">
-        <a class="small-link" href="/account/export" download>{{t "account.export"}}</a>
-        <span class="import-field">
-          <input type="file" name="file" accept="application/json,.json" required aria-label="{{t "account.importButton"}}">
-          <button type="submit" class="small">{{t "account.importButton"}}</button>
-        </span>
-      </form>
+      <ul class="card rows">
+        <li>
+          <div class="row-main">
+            <span>{{t "account.export"}}</span>
+            <small>{{t "account.exportHelp"}}</small>
+          </div>
+          <a class="button-link" href="/account/export" download>{{t "account.exportButton"}}</a>
+        </li>
+        <li>
+          <div class="row-main">
+            <span>{{t "account.import"}}</span>
+            <small>{{t "account.importHelp"}}</small>
+          </div>
+          <form method="post" action="/account/import" enctype="multipart/form-data" class="import-form">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <input type="file" name="file" accept="application/json,.json" required aria-label="{{t "account.import"}}">
+            <button type="submit" class="small">{{t "account.importButton"}}</button>
+          </form>
+        </li>
+      </ul>
     </section>
 
     <section>

@@ -524,7 +524,9 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 
 .list-foot { margin-top: 28px; display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
 .list-foot button { font-size: 15px; color: var(--muted); }
-.checked-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Boutons de la liste sur une ligne (retour à la ligne si la place manque). */
+.list-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.checked-tools { display: contents; }
 .owner-tools { display: flex; flex-direction: column; gap: 28px; align-items: flex-start; }
 /* Pastilles : zone tactile de 44 px, rond visible de 32 px. 4 × 2 sur téléphone, 8 en ligne sinon. */
 .colors { display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; margin: 0; padding: 0; border: 0; }
@@ -813,9 +815,25 @@ a.link:hover { color: var(--ink); }
 .settings button.primary:hover, .page-box button.primary:hover, .settings button.danger-fill:hover { opacity: .88; }
 .settings button.text-danger { min-height: 40px; padding: 0 8px; border: 0; background: none; color: var(--danger); font-size: 14px; }
 .settings button.text-danger:hover { text-decoration: underline; }
-.small-link { display: inline-flex; align-items: center; min-height: 40px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.import-field { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.import-field input[type="file"] { max-width: 100%; font-size: 14px; color: var(--muted); }
+/* Lien d'export et sélecteur de fichier : même pilule que les petits boutons. */
+.button-link, .import-form input[type="file"]::file-selector-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.button-link:hover, .import-form input[type="file"]::file-selector-button:hover { background-color: rgba(var(--shade), .04); }
+.import-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.import-form input[type="file"] { max-width: 100%; font-size: 14px; color: var(--muted); }
+.import-form input[type="file"]::file-selector-button { margin-right: 10px; }
 .card-foot { gap: 8px; align-items: center; }
 .card-foot form { margin: 0; }
 .code { margin: 8px 0 0; padding: 12px 14px; overflow-x: auto; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }

@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased (proposed: v2.3.0)
+## v2.3.1 (2026-11-15)
+
+### Changed
+
+- "Account" → "Your data": export and import are two rows, like the other settings, with matching
+  buttons (the file picker included).
+- The list's buttons (uncheck all, delete checked, duplicate) sit on one line when there is room.
+
+## v2.3.0 (2026-11-15)
 
 ### Added
 
