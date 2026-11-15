@@ -14,9 +14,9 @@
 <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
 <script id="messages" type="application/json">{{.Messages}}</script>
-<script src="/static/app.js" defer></script>
+<script src="/static/app.js" defer blocking="render"></script>
 </head>
-<body data-me="{{.UserID}}" data-name="{{.Name}}" data-default-list-name="{{.DefaultListName}}">
+<body class="booting" data-me="{{.UserID}}" data-name="{{.Name}}" data-default-list-name="{{.DefaultListName}}">
 <header class="bar">
   <button id="tabs-prev" class="tabs-nav" type="button" aria-label="{{t "ui.prevLists"}}" hidden>‹</button>
   <nav id="tabs" class="tabs" aria-label="{{t "ui.lists"}}"></nav>

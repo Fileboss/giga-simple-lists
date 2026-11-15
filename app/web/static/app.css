@@ -37,6 +37,15 @@ body {
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
 }
+/* Pages dessinées par le script (listes, lien public) : rien n'est montré avant le premier
+   rendu, sinon on voit un instant la coquille vide (pied de page en haut, pas d'onglets).
+   Repli si le script échoue : tout réapparaît après 1,5 s. */
+body.booting > * { visibility: hidden; animation: booted 0s 1.5s forwards; }
+@keyframes booted { to { visibility: visible; } }
+/* Fondu entre deux pages du site (navigateurs qui le gèrent ; ignoré ailleurs). */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
 button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 button {
   min-height: 44px;

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.3.2 (2026-11-15)
+
+### Fixed
+
+- No more flash when opening the lists: the empty page (footer at the top, no tabs) is no longer
+  shown before the script draws the lists. Same for a public link. Browsers that support it also
+  cross-fade between pages.
+
 ## v2.3.1 (2026-11-15)
 
 ### Changed

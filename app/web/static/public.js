@@ -59,6 +59,7 @@
   }
 
   function render() {
+    document.body.classList.remove('booting');
     if (!list || gone) return;
     store.set(STATE_KEY, list);
     document.title = list.name;
@@ -254,7 +255,7 @@
     list.items.forEach((it) => { if (it.id in queue) it.checked = queue[it.id]; });
     render();
   }
-  resync();
+  resync().finally(() => document.body.classList.remove('booting'));
   flush();
   connect();
 })();

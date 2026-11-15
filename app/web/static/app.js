@@ -450,6 +450,7 @@
   // Rendu (textContent uniquement : aucun HTML venant des données)
 
   function render() {
+    document.body.classList.remove('booting');
     scheduleSave();
     renderTabs();
     if (el.sheet.open) renderSheet();
@@ -1508,7 +1509,8 @@
       render();
     }
   } catch { /* copie illisible : on attend le serveur */ }
-  resync();
+  // Sans copie locale ni serveur (hors ligne, erreur) : la page s'affiche quand même.
+  resync().finally(() => document.body.classList.remove('booting'));
   flush();
   connect();
 })();

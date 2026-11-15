@@ -11,10 +11,10 @@
 <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1d1d1b" media="(prefers-color-scheme: dark)">
 {{if .List}}<script id="messages" type="application/json">{{.Messages}}</script>
-<script src="/static/public.js" defer></script>{{end}}
+<script src="/static/public.js" defer blocking="render"></script>{{end}}
 </head>
 {{if .List}}
-<body class="public" data-token="{{.Token}}">
+<body class="public booting" data-token="{{.Token}}">
 <div class="notices">
   <p id="toast" class="toast" role="status" hidden></p>
   <p id="offline" class="offline" role="status" hidden>{{t "ui.offline"}}</p>
