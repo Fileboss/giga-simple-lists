@@ -327,7 +327,7 @@ func deleteUser(tx *sql.Tx, userID string) (shared, memberOf []*List, sessions [
 	return shared, memberOf, sessions, nil
 }
 
-// setPassword : nouveau mot de passe (déjà haché, hors du verrou d'écriture) ; toutes les sessions du compte sont révoquées sauf
+// setPassword : nouveau mot de passe (déjà haché, hors du verrou d'écriture) ; le jeton d'API et toutes les sessions du compte sont révoqués sauf
 // keep (la session de l'appareil qui fait le changement, ou aucune). Renvoie les sessions
 // révoquées, dont il faut couper les flux temps réel.
 func setPassword(tx *sql.Tx, userID, passwordHash string, keep []byte) ([][]byte, error) {
@@ -336,6 +336,9 @@ func setPassword(tx *sql.Tx, userID, passwordHash string, keep []byte) ([][]byte
 		return nil, errNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := deleteAPIToken(tx, userID); err != nil {
 		return nil, err
 	}
 	return revokeSessions(tx, userID, keep)

@@ -9,6 +9,7 @@
   private lists.
 - **Personal API token** and `POST /api/v1/items` to add an item to a list by its name (Home
   Assistant, phone shortcuts); `GET /api/v1/lists` lists the names. See README, Integrations.
+  Changing the password, a reset link or an admin "Sign out everywhere" revokes it.
 - `LISTES_AUTH_HEADER`: optional sign-in through an authentication proxy header (Authelia,
   Authentik), trusted only from `LISTES_TRUSTED_PROXIES`, for existing accounts.
 

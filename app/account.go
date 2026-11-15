@@ -265,10 +265,7 @@ func (a *App) invitePost(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		userID = inv.UserID
-		if _, err = tx.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, hash, userID); err != nil {
-			return nil, err
-		}
-		if revoked, err = revokeSessions(tx, userID, nil); err != nil {
+		if revoked, err = setPassword(tx, userID, hash, nil); err != nil {
 			return nil, err
 		}
 		_, err = tx.Exec(`DELETE FROM login_attempts WHERE key = ?`, userKey(inv.UserName))

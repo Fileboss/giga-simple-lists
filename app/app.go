@@ -298,9 +298,15 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 		}
 		s, refreshed, err := lookupSession(a.db, token)
 		// LISTES_AUTH_HEADER : le reverse proxy a déjà authentifié la personne. Sans
-		// session à son nom, on en ouvre une (comme une connexion par mot de passe).
+		// session à son nom, on en ouvre une (comme une connexion par mot de passe), mais
+		// seulement en chargeant une page : une page déjà ouverte garde l'ancien jeton CSRF
+		// et ses écritures seraient refusées (403, modifications perdues). L'API et les
+		// formulaires répondent donc comme sans session : l'appli passe par /login, qui
+		// ouvre la session et recharge la page.
 		if u := a.headerUser(r); u != nil && (err != nil || s.UserID != u.ID) {
-			if s, err = a.headerSession(w, r, u); err == nil {
+			if api || isUnsafe(r.Method) {
+				err = errNotFound
+			} else if s, err = a.headerSession(w, r, u); err == nil {
 				refreshed = false
 			}
 		}

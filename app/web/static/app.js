@@ -1416,17 +1416,20 @@
   });
 
   // Dupliquer : copie privée, éléments décochés (un modèle réutilisé). Il faut le réseau :
-  // la copie est faite par le serveur, qui l'envoie aussi par le flux temps réel.
+  // la copie est faite par le serveur, qui l'envoie aussi par le flux temps réel. Le même
+  // nonce est renvoyé jusqu'au succès : réponse perdue puis nouveau clic, pas de 2e copie.
+  const duplicateNonces = new Map();
   el.duplicate.addEventListener('click', async () => {
     const l = currentList();
     if (!l) return;
+    if (!duplicateNonces.has(l.id)) duplicateNonces.set(l.id, randomHex());
     let res;
     try {
       res = await fetch('/api/lists/' + l.id + '/duplicate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
         credentials: 'same-origin',
-        body: JSON.stringify({ nonce: randomHex() }),
+        body: JSON.stringify({ nonce: duplicateNonces.get(l.id) }),
       });
     } catch {
       res = null;
@@ -1436,6 +1439,7 @@
       toast(err.error || t('needsNetwork'));
       return;
     }
+    duplicateNonces.delete(l.id);
     const copy = await res.json();
     if (!byId(copy.id)) lists.push({ ...copy, items: copy.items || [] });
     open(copy.id);
