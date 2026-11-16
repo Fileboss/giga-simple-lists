@@ -12,6 +12,7 @@
   const QUEUE_KEY = 'listes.queue.' + ME;
   const LAST_KEY = 'listes.last.' + ME;
   const STATE_KEY = 'listes.state.' + ME; // dernières listes affichées, pour ouvrir l'appli sans réseau
+  const RELOAD_KEY = 'listes.reloaded'; // sessionStorage : dernier rechargement pour un jeton CSRF périmé
   const $ = (id) => document.getElementById(id);
   const el = {
     tabs: $('tabs'), tabsPrev: $('tabs-prev'), tabsNext: $('tabs-next'), newList: $('new-list'), offline: $('offline'), toast: $('toast'),
@@ -277,16 +278,16 @@
         // Serveur injoignable derrière le reverse proxy (machine éteinte, réseau coupé) : comme hors ligne.
         if (res.status === 502 || res.status === 503 || res.status === 504) return retryLater();
         setOffline(false);
+        const err = res.ok ? null : await res.json().catch(() => ({}));
+        // Jeton CSRF périmé : l'opération reste dans la file et repartira après le rechargement.
+        if (err && err.code === 'csrf' && reloadForToken()) return;
         queue.shift();
         trackPending(op.ids, -1);
         saveQueue();
-        if (!res.ok) {
+        if (err) {
           // Refus définitif (404 : la liste n'est plus visible, 403, 400…) : on abandonne
           // l'opération et on recharge l'état du serveur.
-          if (res.status !== 404) {
-            const err = await res.json().catch(() => ({}));
-            toast(err.error || t('refused'));
-          }
+          if (res.status !== 404) toast(err.error || t('refused'));
           resyncWanted = true;
         }
       }
@@ -294,6 +295,25 @@
     } finally {
       flushing = false;
     }
+  }
+
+  // Jeton CSRF périmé : la session de ce navigateur a changé dans un autre onglet (mot de
+  // passe changé, lien d'invitation ouvert…) et le serveur refuse l'ancien jeton. On recharge
+  // la page pour avoir le nouveau ; la file, sauvegardée sur l'appareil, repart ensuite.
+  // Une fois par minute au plus (sans sessionStorage, jamais) : pas de boucle si le
+  // rechargement n'y change rien ; on abandonne alors comme pour un autre refus.
+  function reloadForToken() {
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0;
+      if (Date.now() - last < 60000) return false;
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    } catch {
+      return false;
+    }
+    saveState();
+    location.reload();
+    return true;
   }
 
   function retryLater() {
@@ -361,16 +381,25 @@
   // connexion est morte sans erreur visible (réseau coupé en silence) ; on la rouvre.
   let es = null;
   let lastEvent = Date.now();
+  let retryDelay = 3000;
+  let reconnectTimer = null;
   function connect() {
+    clearTimeout(reconnectTimer);
     if (es) es.close();
     lastEvent = Date.now();
     es = new EventSource('/api/events');
-    es.onopen = () => { lastEvent = Date.now(); setOffline(false); flush(); resync(); };
+    es.onopen = () => { lastEvent = Date.now(); retryDelay = 3000; setOffline(false); flush(); resync(); };
     es.addEventListener('ping', () => { lastEvent = Date.now(); });
     es.onerror = () => {
       setOffline(true);
-      // Fermé définitivement (session expirée…) : on vérifie, puis on rouvre.
-      if (es.readyState === EventSource.CLOSED) setTimeout(() => resync().then(connect), 3000);
+      if (es.readyState !== EventSource.CLOSED) return;
+      // Fermé définitivement (session expirée, trop de flux ouverts : 429…) : on vérifie,
+      // puis on rouvre de plus en plus tard (30 s au plus), comme public.js.
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        retryDelay = Math.min(retryDelay * 2, 30000);
+        resync().then(connect);
+      }, retryDelay);
     };
     es.addEventListener('list', (e) => onList(JSON.parse(e.data)));
     ['list', 'list-removed', 'item', 'item-removed', 'items-removed', 'items-moved'].forEach((n) => es.addEventListener(n, () => { lastEvent = Date.now(); }));
@@ -1335,6 +1364,7 @@
     }
     if (!res || !res.ok) {
       const err = res ? await res.json().catch(() => ({})) : {};
+      if (err.code === 'csrf' && reloadForToken()) return;
       toast(err.error || t('needsNetwork'));
       renderShare(l);
       return;
@@ -1437,6 +1467,7 @@
     }
     if (!res || !res.ok) {
       const err = res ? await res.json().catch(() => ({})) : {};
+      if (err.code === 'csrf' && reloadForToken()) return;
       toast(err.error || t('needsNetwork'));
       return;
     }
@@ -1477,6 +1508,8 @@
   });
 
   setInterval(() => {
+    // Flux fermé : la reconnexion est déjà programmée (onerror), avec son délai.
+    if (es && es.readyState === EventSource.CLOSED) return;
     if (Date.now() - lastEvent > 45000) { setOffline(true); connect(); }
   }, 5000);
 
@@ -1488,11 +1521,29 @@
     if (!es || es.readyState === EventSource.CLOSED) connect();
   });
 
-  // Déconnexion : rien ne reste sur l'appareil (le service worker oublie la page).
-  document.querySelector('form[action="/logout"]').addEventListener('submit', () => {
+  // Déconnexion : rien ne reste sur l'appareil (le service worker oublie la page), ni les
+  // listes, ni la file d'attente (elle contient le texte des éléments), ni la dernière liste.
+  // Des modifications pas encore envoyées : on tente de les envoyer ; si le réseau manque,
+  // un message prévient qu'elles seront perdues, et un second clic (4 s) déconnecte quand même.
+  const logoutForm = document.querySelector('form[action="/logout"]');
+  let logoutArmed = null;
+  logoutForm.addEventListener('submit', async (e) => {
+    if (queue.length && !logoutArmed) {
+      e.preventDefault();
+      await flush();
+      if (queue.length) {
+        toast(t('unsentLogout', { n: queue.length }));
+        logoutArmed = setTimeout(() => { logoutArmed = null; }, 4000);
+        return;
+      }
+    }
     clearTimeout(saveTimer);
+    clearTimeout(retryTimer);
     loaded = false;
-    store.remove(STATE_KEY);
+    queue = [];
+    pending.clear();
+    [STATE_KEY, QUEUE_KEY, LAST_KEY].forEach((k) => store.remove(k));
+    if (e.defaultPrevented) logoutForm.submit();
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

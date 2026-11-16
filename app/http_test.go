@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"math"
@@ -508,5 +509,47 @@ func TestThrottledLog(t *testing.T) {
 	logThrottle.Unlock()
 	if ok, skipped := throttled(msg); !ok || skipped != 100 {
 		t.Fatalf("après une minute : ok=%v sautés=%d", ok, skipped)
+	}
+}
+
+// Jeton CSRF périmé (session changée dans un autre onglet) : code "csrf", pour qu'app.js
+// recharge la page au lieu d'abandonner la modification. Pas pour une mauvaise origine.
+func TestCSRFStaleTokenCode(t *testing.T) {
+	h := newHarness(t)
+	s := h.session(h.addUser("alice"))
+	code := func(tweak func(*http.Request)) string {
+		req := h.req(s, "POST", "/api/lists", map[string]any{"name": "x"})
+		tweak(req)
+		w := h.serve(req)
+		var e apiError
+		json.Unmarshal(w.Body.Bytes(), &e)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("attendu 403, obtenu %d", w.Code)
+		}
+		return e.Code
+	}
+	if c := code(func(r *http.Request) { r.Header.Set("X-CSRF-Token", "ancien") }); c != "csrf" {
+		t.Errorf("jeton périmé : code %q", c)
+	}
+	if c := code(func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }); c != "" {
+		t.Errorf("origine étrangère : code %q, attendu aucun", c)
+	}
+}
+
+// En IPv6, le blocage vaut pour tout le /64 : changer d'adresse ne le contourne pas.
+func TestLoginLockoutIPv6Prefix(t *testing.T) {
+	h := newHarness(t)
+	h.addUser("alice")
+	for i := int64(0); i < ipRule.threshold; i++ {
+		h.loginForm(fmt.Sprintf("2001:db8:1:2::%x", i+1), fmt.Sprintf("u%d", i), "mauvais") // des noms différents : pas de ralentissement par compte
+	}
+	if blocked, _ := loginBlocked(h.db, ipKey("2001:db8:1:2::ffff")); !blocked {
+		t.Fatal("une autre adresse du même /64 aurait dû être bloquée")
+	}
+	if blocked, _ := loginBlocked(h.db, ipKey("2001:db8:1:3::1")); blocked {
+		t.Fatal("un autre /64 ne doit pas être bloqué")
+	}
+	if res := h.loginForm("2001:db8:1:3::1", "alice", testPassword); res.Code != http.StatusSeeOther {
+		t.Fatalf("connexion depuis un autre /64 : %d", res.Code)
 	}
 }

@@ -493,3 +493,23 @@ func TestDeviceName(t *testing.T) {
 		}
 	}
 }
+
+// Formulaire d'un lien envoyé depuis une autre adresse que LISTES_ORIGIN : la page
+// l'explique (comme /login) au lieu de répondre en JSON.
+func TestInvitationWrongOrigin(t *testing.T) {
+	useLang(t, "en")
+	h := newHarness(t)
+	admin := h.session(h.addUser("alice"))
+	token := h.newLink(admin, "/admin/invites", url.Values{})
+	v := url.Values{"name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
+	req := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(v.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://192.168.1.10:5240")
+	w := h.serve(req)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "LISTES_ORIGIN") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("Content-Type %q", w.Header().Get("Content-Type"))
+	}
+}

@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.3.3 (2026-11-16)
+
+### Fixed
+
+- Changes made in another tab or in the installed app are no longer lost after changing your
+  password (or opening an invitation link) in the same browser: the page reloads to pick up the
+  new session and sends them then.
+- A tab beyond the limit of 4 live connections per session retries later and later (up to every
+  30 s) instead of every 3 s.
+- Signing out also removes pending changes and the last opened list from the device. If some
+  changes could not be sent yet, a first tap warns, a second one signs out.
+- An invitation form sent from an address other than `LISTES_ORIGIN` explains it, like the
+  sign-in page, instead of showing raw JSON.
+- `LISTES_ORIGIN` with a path, a query or no host (`https://`) is refused at startup.
+- `user add --password-stdin` also refuses a password over 1024 bytes.
+
+### Security
+
+- Over IPv6, the sign-in lockout applies to the whole /64 network: changing address no longer
+  gets around it.
+- Changing the password applies the same per-account slowdown as signing in.
+
 ## v2.3.2 (2026-11-15)
 
 ### Fixed

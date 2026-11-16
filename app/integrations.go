@@ -317,11 +317,11 @@ func (a *App) tokenAPI(h func(http.ResponseWriter, *http.Request, *session)) htt
 				errorLog("api_tokens", err)
 			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="giga-simple-lists"`)
-			writeJSON(w, http.StatusUnauthorized, apiError{T("err.apiToken")})
+			writeJSON(w, http.StatusUnauthorized, apiError{Error: T("err.apiToken")})
 			return
 		}
 		if !a.tokenCalls.allow(s.UserID, apiTokenPerMinute) {
-			writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyRequests")})
+			writeJSON(w, http.StatusTooManyRequests, apiError{Error: T("err.tooManyRequests")})
 			return
 		}
 		if _, err := a.db.Exec(`UPDATE api_tokens SET last_used_at = ? WHERE user_id = ?`, nowMs(), s.UserID); err != nil {
@@ -421,7 +421,7 @@ func (a *App) apiV1AddItem(w http.ResponseWriter, r *http.Request, s *session) {
 		return []event{newEvent(evItem, it, toViewersOf(l))}, nil
 	})
 	if errors.Is(err, errAmbiguous) {
-		writeJSON(w, http.StatusConflict, apiError{T("err.listAmbiguous")})
+		writeJSON(w, http.StatusConflict, apiError{Error: T("err.listAmbiguous")})
 		return
 	}
 	if err != nil {

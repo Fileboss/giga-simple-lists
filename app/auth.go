@@ -136,7 +136,9 @@ var (
 	attemptsWindow = 24 * time.Hour
 )
 
-func ipKey(ip string) string { return "ip:" + ip }
+// ipKey : en IPv6, le réseau /64 (ipBucket) : un appareil en dispose entier et changerait
+// d'adresse à chaque tentative pour échapper au blocage.
+func ipKey(ip string) string { return "ip:" + ipBucket(ip) }
 
 func userKey(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
