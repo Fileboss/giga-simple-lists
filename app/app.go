@@ -315,7 +315,7 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 				errorLog("session", err)
 			}
 			if api {
-				writeJSON(w, http.StatusUnauthorized, apiError{T("err.sessionExpired")})
+				writeJSON(w, http.StatusUnauthorized, apiError{Error: T("err.sessionExpired")})
 			} else {
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 			}
@@ -329,8 +329,12 @@ func (a *App) authed(api bool, h func(http.ResponseWriter, *http.Request, *sessi
 			if sent == "" && !api {
 				sent = r.PostFormValue("csrf")
 			}
-			if !a.sameOrigin(r) || subtle.ConstantTimeCompare([]byte(sent), []byte(s.CSRF)) != 1 {
-				writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
+			if !a.sameOrigin(r) {
+				writeJSON(w, http.StatusForbidden, apiError{Error: T("err.refused")})
+				return
+			}
+			if subtle.ConstantTimeCompare([]byte(sent), []byte(s.CSRF)) != 1 {
+				writeJSON(w, http.StatusForbidden, apiError{Error: T("err.refused"), Code: "csrf"})
 				return
 			}
 		}
@@ -453,6 +457,9 @@ func (a *App) housekeeping(ctx context.Context) {
 
 type apiError struct {
 	Error string `json:"error"`
+	// Code : pour app.js ; "csrf" : jeton périmé (la session a changé dans un autre
+	// onglet), la page se recharge pour avoir le nouveau au lieu d'abandonner la modification.
+	Code string `json:"code,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -489,20 +496,20 @@ func writeErr(w http.ResponseWriter, err error) {
 	var mbe *http.MaxBytesError
 	switch {
 	case errors.Is(err, errNotFound):
-		writeJSON(w, http.StatusNotFound, apiError{T("err.notFound")})
+		writeJSON(w, http.StatusNotFound, apiError{Error: T("err.notFound")})
 	case errors.Is(err, errForbidden):
-		writeJSON(w, http.StatusForbidden, apiError{T("err.forbidden")})
+		writeJSON(w, http.StatusForbidden, apiError{Error: T("err.forbidden")})
 	case errors.Is(err, errLimit):
-		writeJSON(w, http.StatusConflict, apiError{T("err.limit")})
+		writeJSON(w, http.StatusConflict, apiError{Error: T("err.limit")})
 	case errors.As(err, &inv):
-		writeJSON(w, http.StatusBadRequest, apiError{inv.Error()})
+		writeJSON(w, http.StatusBadRequest, apiError{Error: inv.Error()})
 	case errors.As(err, &mbe):
-		writeJSON(w, http.StatusRequestEntityTooLarge, apiError{T("err.tooLarge")})
+		writeJSON(w, http.StatusRequestEntityTooLarge, apiError{Error: T("err.tooLarge")})
 	case isStorageFull(err):
 		errorLog(T("log.storageFull"), err)
-		writeJSON(w, http.StatusInsufficientStorage, apiError{T("err.storageFull")})
+		writeJSON(w, http.StatusInsufficientStorage, apiError{Error: T("err.storageFull")})
 	default:
 		errorLog(T("log.request"), err)
-		writeJSON(w, http.StatusInternalServerError, apiError{T("err.internal")})
+		writeJSON(w, http.StatusInternalServerError, apiError{Error: T("err.internal")})
 	}
 }

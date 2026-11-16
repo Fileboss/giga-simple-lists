@@ -32,6 +32,11 @@ func TestCheckOrigin(t *testing.T) {
 		{"", true, false},
 		{"http://", true, false},
 		{"ftp://lists.example.com", true, false},
+		{"https://", false, false},
+		{"https://lists.example.com/app", false, false}, // un chemin : l'Origin des navigateurs n'est jamais égal
+		{"https://lists.example.com?x", false, false},
+		{"https://user@lists.example.com", false, false},
+		{"https://lists.example.com:8443", false, true},
 	} {
 		err := checkOrigin(config{Origin: c.origin, InsecureHTTP: c.insecure})
 		if (err == nil) != c.ok {

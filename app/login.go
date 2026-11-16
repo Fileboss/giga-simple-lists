@@ -67,32 +67,12 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.PostFormValue("name")
-	// Ralentissement par compte (après plusieurs échecs) : appliqué avant toute
-	// vérification, au plus 1 minute ; le délai d'écriture est prolongé d'autant.
-	delay, err := accountDelay(a.db, userKey(name))
-	if err != nil {
-		errorLog("login_attempts", err)
-	}
-	if delay > 0 {
-		select {
-		case slowSem <- struct{}{}:
-		default:
-			// Trop de tentatives ralenties en attente : refus immédiat, sans vérifier.
-			throttledLog(T("log.loginQueueFull"), "ip", ip)
-			a.renderLogin(w, http.StatusUnauthorized, T("login.failed"))
-			return
-		}
-		http.NewResponseController(w).SetWriteDeadline(time.Now().Add(delay + a.loginMin + 15*time.Second))
-		t := time.NewTimer(delay)
-		select {
-		case <-t.C:
-		case <-r.Context().Done():
-			// Client parti : on libère la place sans vérifier.
-			t.Stop()
-			<-slowSem
-			return
-		}
-		<-slowSem
+	switch a.waitAccountDelay(w, r, ip, name) {
+	case slowQueueFull:
+		a.renderLogin(w, http.StatusUnauthorized, T("login.failed"))
+		return
+	case slowClientGone:
+		return
 	}
 	start := time.Now()
 	u := a.authenticate(ip, name, r.PostFormValue("password"))
@@ -123,6 +103,44 @@ func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 
 // authenticate vérifie le mot de passe. Le calcul coûteux est fait même pour un
 // compte inexistant. Renvoie nil en cas d'échec ; la cause ne va qu'au journal.
+type slowResult int
+
+const (
+	slowDone       slowResult = iota // délai écoulé (ou aucun) : on peut vérifier
+	slowQueueFull                    // trop de tentatives ralenties en attente : refus sans vérifier
+	slowClientGone                   // client parti pendant l'attente
+)
+
+// waitAccountDelay : ralentissement par compte (après plusieurs échecs), appliqué avant
+// toute vérification du mot de passe, au plus 1 minute ; le délai d'écriture est prolongé
+// d'autant. Un ralentissement plutôt qu'un refus : quiconque connaît le nom ne peut pas
+// empêcher son propriétaire de se connecter ou de changer son mot de passe.
+func (a *App) waitAccountDelay(w http.ResponseWriter, r *http.Request, ip, name string) slowResult {
+	delay, err := accountDelay(a.db, userKey(name))
+	if err != nil {
+		errorLog("login_attempts", err)
+	}
+	if delay <= 0 {
+		return slowDone
+	}
+	select {
+	case slowSem <- struct{}{}:
+	default:
+		throttledLog(T("log.loginQueueFull"), "ip", ip)
+		return slowQueueFull
+	}
+	defer func() { <-slowSem }()
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(delay + a.loginMin + 15*time.Second))
+	t := time.NewTimer(delay)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return slowDone
+	case <-r.Context().Done():
+		return slowClientGone
+	}
+}
+
 func (a *App) authenticate(ip, name, password string) *user {
 	name = strings.TrimSpace(name)
 	keys := []string{ipKey(ip), userKey(name)}

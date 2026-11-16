@@ -110,6 +110,13 @@ func (a *App) accountPassword(w http.ResponseWriter, r *http.Request, s *session
 		a.renderAccount(w, http.StatusBadRequest, s, "", err.Error())
 		return
 	}
+	switch a.waitAccountDelay(w, r, ip, s.UserName) {
+	case slowQueueFull:
+		a.renderAccount(w, http.StatusUnauthorized, s, "", T("err.currentPassword"))
+		return
+	case slowClientGone:
+		return
+	}
 	start := time.Now()
 	u := a.authenticate(ip, s.UserName, current)
 	if d := a.loginMin - time.Since(start); d > 0 {
@@ -225,13 +232,20 @@ func (a *App) renderInvite(w http.ResponseWriter, status int, inv *invitation, e
 
 func (a *App) invitePost(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r, a.cfg.TrustedProxies)
-	if !a.sameOrigin(r) || r.ParseForm() != nil {
-		writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
-		return
-	}
 	inv, err := lookupInvitation(a.db, r.PathValue("token"))
 	if err != nil {
 		a.renderInviteGone(w, err)
+		return
+	}
+	if !a.sameOrigin(r) || r.ParseForm() != nil {
+		// Comme /login : page ouverte à une autre adresse que LISTES_ORIGIN, on le dit
+		// plutôt que de répondre en JSON (l'adresse attendue reste dans les journaux).
+		slog.Warn(T("log.loginRefusedCSRF"), "ip", ip, "origin", r.Header.Get("Origin"), "expected", a.cfg.Origin)
+		msg := T("login.expired")
+		if o := r.Header.Get("Origin"); o != "" && o != a.cfg.Origin {
+			msg = T("login.wrongOrigin")
+		}
+		a.renderInvite(w, http.StatusForbidden, inv, msg)
 		return
 	}
 	// Cookie du formulaire expiré (1 h) ou remplacé par la page de connexion d'un autre

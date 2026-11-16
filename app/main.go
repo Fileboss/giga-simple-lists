@@ -125,6 +125,12 @@ func run(args []string) error {
 // checkOrigin : HTTPS, ou http://localhost (le navigateur y accepte les cookies Secure),
 // ou une autre origine http:// seulement si LISTES_INSECURE_HTTP le demande explicitement.
 func checkOrigin(cfg config) error {
+	// Une origine : schéma et hôte (port facultatif), rien d'autre. Avec un chemin,
+	// l'en-tête Origin des navigateurs ne lui serait jamais égal : toute écriture échouerait.
+	u, err := url.Parse(cfg.Origin)
+	if err != nil || u.Host == "" || u.Opaque != "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return errors.New(T("err.origin"))
+	}
 	switch {
 	case strings.HasPrefix(cfg.Origin, "https://"):
 		if cfg.InsecureHTTP {

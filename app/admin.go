@@ -105,8 +105,8 @@ func setUser(out io.Writer, in io.Reader, db *sql.DB, name string, create, fromS
 			return err
 		}
 		password = strings.TrimRight(line, "\r\n")
-		if utf8.RuneCountInString(password) < 15 {
-			return errors.New(T("cli.passwordShort"))
+		if err := validPassword(password); err != nil {
+			return err
 		}
 	}
 	hash := hashPassword(password)

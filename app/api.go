@@ -334,7 +334,7 @@ func (a *App) apiRestoreItems(w http.ResponseWriter, r *http.Request, s *session
 func (a *App) apiEvents(w http.ResponseWriter, r *http.Request, s *session) {
 	sub := a.hub.subscribe(s.UserID, s.Hash)
 	if sub == nil {
-		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyStreams")})
+		writeJSON(w, http.StatusTooManyRequests, apiError{Error: T("err.tooManyStreams")})
 		return
 	}
 	defer a.hub.unsubscribe(sub)

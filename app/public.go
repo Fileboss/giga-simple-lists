@@ -191,11 +191,11 @@ const (
 func (a *App) publicCheck(w http.ResponseWriter, r *http.Request) {
 	publicHeaders(w)
 	if !a.sameOrigin(r) {
-		writeJSON(w, http.StatusForbidden, apiError{T("err.refused")})
+		writeJSON(w, http.StatusForbidden, apiError{Error: T("err.refused")})
 		return
 	}
 	if !a.publicWrites.allow(ipBucket(clientIP(r, a.cfg.TrustedProxies)), publicWritesPerMinute) {
-		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyRequests")})
+		writeJSON(w, http.StatusTooManyRequests, apiError{Error: T("err.tooManyRequests")})
 		return
 	}
 	itemID, err := pathID(r)
@@ -258,7 +258,7 @@ func (a *App) publicEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	sub := a.hub.subscribePublic(l.ID, ipBucket(clientIP(r, a.cfg.TrustedProxies)))
 	if sub == nil {
-		writeJSON(w, http.StatusTooManyRequests, apiError{T("err.tooManyStreams")})
+		writeJSON(w, http.StatusTooManyRequests, apiError{Error: T("err.tooManyStreams")})
 		return
 	}
 	defer a.hub.unsubscribe(sub)
