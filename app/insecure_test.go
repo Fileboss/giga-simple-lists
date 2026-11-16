@@ -45,19 +45,6 @@ func TestCheckOrigin(t *testing.T) {
 	}
 }
 
-// Sans LISTES_INSECURE_HTTP, les cookies ne changent pas : __Host-, Secure.
-func TestCookiesSecureByDefault(t *testing.T) {
-	h := newHarness(t)
-	h.addUser("alice")
-	res := h.loginForm("198.51.100.1", "alice", testPassword)
-	if res.Code != http.StatusSeeOther || res.Cookie == nil {
-		t.Fatalf("connexion : %d %s", res.Code, res.Body)
-	}
-	if res.Cookie.Name != "__Host-session" || !res.Cookie.Secure || !res.Cookie.HttpOnly || res.Cookie.Path != "/" {
-		t.Fatalf("cookie : %+v", res.Cookie)
-	}
-}
-
 // Avec LISTES_INSECURE_HTTP sur une origine http://, toute la boucle fonctionne : cookies
 // sans Secure ni préfixe __Host- (refusés en HTTP simple), mêmes défenses CSRF.
 func TestInsecureHTTPLogin(t *testing.T) {

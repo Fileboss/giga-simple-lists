@@ -87,16 +87,6 @@ func isAdmin(t *testing.T, db *sql.DB, name string) bool {
 
 const newPassword = "another-long-passphrase-42"
 
-// Le premier compte (ligne de commande) est admin, les suivants non.
-func TestFirstCLIAccountIsAdmin(t *testing.T) {
-	h := newHarness(t)
-	h.addUser("alice")
-	h.addUser("bob")
-	if !isAdmin(t, h.db, "alice") || isAdmin(t, h.db, "bob") {
-		t.Fatal("rôles")
-	}
-}
-
 // Instance existante : le plus ancien compte devient admin, les sessions restent valides.
 func TestMigrationAccounts(t *testing.T) {
 	dir := t.TempDir()
@@ -186,24 +176,6 @@ func TestInvitationFlow(t *testing.T) {
 	advance(inviteTTL + time.Minute)
 	if w := h.useLink(token, "dave", testPassword); w.Code != http.StatusNotFound {
 		t.Fatalf("lien expiré : %d", w.Code)
-	}
-}
-
-// Formulaire du lien : Origin et jeton CSRF obligatoires.
-func TestInvitationCSRF(t *testing.T) {
-	h := newHarness(t)
-	admin := h.session(h.addUser("alice"))
-	token := h.newLink(admin, "/admin/invites", url.Values{})
-	v := url.Values{"csrf": {"x"}, "name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
-	req := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(v.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", testOrigin)
-	req.AddCookie(&http.Cookie{Name: loginCSRFCookie, Value: "y"})
-	if w := h.serve(req); w.Code != http.StatusForbidden {
-		t.Fatalf("%d", w.Code)
-	}
-	if w := h.useLink(token, "bob", testPassword); w.Code != http.StatusSeeOther {
-		t.Fatal("le lien doit rester valable après un envoi refusé")
 	}
 }
 
@@ -324,6 +296,9 @@ func TestLastAdmin(t *testing.T) {
 	aliceUser := h.addUser("alice")
 	admin := h.session(aliceUser)
 	bobUser := h.addUser("bob")
+	if !isAdmin(t, h.db, "alice") || isAdmin(t, h.db, "bob") {
+		t.Fatal("seul le premier compte (ligne de commande) est admin")
+	}
 	if w := h.form(admin, "/admin/users/"+aliceUser.ID+"/role", url.Values{"admin": {"0"}}); w.Code != http.StatusBadRequest {
 		t.Fatalf("retrait du dernier admin : %d", w.Code)
 	}
@@ -410,24 +385,6 @@ func TestSetupLinkAfterCLI(t *testing.T) {
 	}
 }
 
-// Formulaire d'un lien envoyé avec un cookie de formulaire périmé : la page, pas du JSON.
-func TestInviteExpiredForm(t *testing.T) {
-	h := newHarness(t)
-	admin := h.session(h.addUser("alice"))
-	token := h.newLink(admin, "/admin/invites", url.Values{})
-	form := url.Values{"csrf": {"périmé"}, "name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
-	r := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(form.Encode()))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Set("Origin", testOrigin)
-	w := h.serve(r)
-	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "<form") {
-		t.Fatalf("%d %s", w.Code, w.Body.String())
-	}
-	if w := h.useLink(token, "bob", testPassword); w.Code != http.StatusSeeOther {
-		t.Fatalf("lien consommé par un envoi refusé : %d", w.Code)
-	}
-}
-
 // Suppression d'un compte : ses listes partagées disparaissent chez les autres, ses
 // sessions sont révoquées.
 func TestAdminDeleteUser(t *testing.T) {
@@ -450,16 +407,6 @@ func TestAdminDeleteUser(t *testing.T) {
 	if _, err := userByName(h.db, "bob"); err == nil {
 		t.Fatal("compte encore là")
 	}
-}
-
-func TestAdminSignOut(t *testing.T) {
-	h := newHarness(t)
-	admin := h.session(h.addUser("alice"))
-	bobUser := h.addUser("bob")
-	bob := h.session(bobUser)
-	h.form(admin, "/admin/users/"+bobUser.ID+"/sign-out", url.Values{})
-	h.expect(http.StatusUnauthorized, bob, "GET", "/api/state", nil)
-	h.expect(http.StatusOK, admin, "GET", "/api/state", nil)
 }
 
 func TestInviteCLI(t *testing.T) {
@@ -494,22 +441,35 @@ func TestDeviceName(t *testing.T) {
 	}
 }
 
-// Formulaire d'un lien envoyé depuis une autre adresse que LISTES_ORIGIN : la page
-// l'explique (comme /login) au lieu de répondre en JSON.
-func TestInvitationWrongOrigin(t *testing.T) {
+// Formulaire d'un lien refusé (jeton CSRF faux ou périmé, autre adresse que
+// LISTES_ORIGIN) : une page qui l'explique, pas du JSON, et le lien reste valable.
+func TestInvitationFormRejected(t *testing.T) {
 	useLang(t, "en")
 	h := newHarness(t)
 	admin := h.session(h.addUser("alice"))
 	token := h.newLink(admin, "/admin/invites", url.Values{})
-	v := url.Values{"name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
-	req := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(v.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", "http://192.168.1.10:5240")
-	w := h.serve(req)
-	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "LISTES_ORIGIN") {
-		t.Fatalf("%d %s", w.Code, w.Body.String())
+	post := func(origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		v := url.Values{"csrf": {"x"}, "name": {"bob"}, "password": {testPassword}, "confirm": {testPassword}}
+		req := httptest.NewRequest("POST", "/invite/"+token, strings.NewReader(v.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", origin)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		return h.serve(req)
 	}
-	if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
-		t.Fatalf("Content-Type %q", w.Header().Get("Content-Type"))
+	if w := post(testOrigin, &http.Cookie{Name: loginCSRFCookie, Value: "y"}); w.Code != http.StatusForbidden {
+		t.Fatalf("jeton faux : %d", w.Code)
+	}
+	if w := post(testOrigin, nil); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "<form") {
+		t.Fatalf("cookie périmé : %d %s", w.Code, w.Body.String())
+	}
+	w := post("http://192.168.1.10:5240", nil)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "LISTES_ORIGIN") ||
+		!strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("autre origine : %d %q %s", w.Code, w.Header().Get("Content-Type"), w.Body.String())
+	}
+	if w := h.useLink(token, "bob", testPassword); w.Code != http.StatusSeeOther {
+		t.Fatalf("lien consommé par un envoi refusé : %d", w.Code)
 	}
 }

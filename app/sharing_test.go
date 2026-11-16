@@ -215,11 +215,21 @@ func TestPublicEvents(t *testing.T) {
 	h.createItem(alice, h.createList(alice, "Autre").ID, "x")
 	pub.none(t, 200*time.Millisecond)
 
-	h.publicLink(alice, l.ID)
+	token = h.publicLink(alice, l.ID)
 	select {
 	case <-pub.closed:
 	case <-time.After(2 * time.Second):
 		t.Fatal("flux de l'ancien lien non coupé")
+	}
+
+	// Liste supprimée : les visiteurs du lien le voient tout de suite.
+	pub = openPublicSSE(t, srv.URL, token)
+	h.expect(http.StatusNoContent, alice, "DELETE", "/api/lists/"+l.ID, nil)
+	if ev := pub.next(t, 2*time.Second); ev.Name != evListRemoved {
+		t.Fatalf("suppression : %s %s", ev.Name, ev.Data)
+	}
+	if h.anon("GET", "/s/"+token, nil).Code != http.StatusNotFound {
+		t.Fatal("page d'une liste supprimée")
 	}
 }
 
@@ -261,24 +271,6 @@ func TestPublicLimits(t *testing.T) {
 	}
 	if h.app.hub.subscribe(alice.User.ID, []byte("session")) == nil {
 		t.Fatal("les flux anonymes ont privé un compte du sien")
-	}
-}
-
-// Liste supprimée : les visiteurs du lien le voient tout de suite.
-func TestPublicListDeleted(t *testing.T) {
-	h := newHarness(t)
-	alice := h.session(h.addUser("alice"))
-	l := h.createList(alice, "Courses")
-	token := h.publicLink(alice, l.ID)
-	srv := httptest.NewServer(h.app.routes())
-	t.Cleanup(srv.Close) // après la fermeture des flux
-	pub := openPublicSSE(t, srv.URL, token)
-	h.expect(http.StatusNoContent, alice, "DELETE", "/api/lists/"+l.ID, nil)
-	if ev := pub.next(t, 2*time.Second); ev.Name != evListRemoved {
-		t.Fatalf("%s %s", ev.Name, ev.Data)
-	}
-	if h.anon("GET", "/s/"+token, nil).Code != http.StatusNotFound {
-		t.Fatal("page d'une liste supprimée")
 	}
 }
 

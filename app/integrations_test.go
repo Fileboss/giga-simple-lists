@@ -234,6 +234,8 @@ func TestAPIToken(t *testing.T) {
 	if c := bearer(h, bt, "GET", "/api/v1/lists", nil).Code; c != http.StatusUnauthorized {
 		t.Fatalf("jeton après « Déconnecter partout » : %d", c)
 	}
+	h.expect(http.StatusUnauthorized, bob, "GET", "/api/state", nil)
+	h.expect(http.StatusOK, alice, "GET", "/api/state", nil)
 	bob = h.session(bob.User)
 	bt = newToken(bob)
 	pw := "another-long-password-2026"

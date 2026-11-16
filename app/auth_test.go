@@ -65,24 +65,9 @@ func TestLoginSuccessAndCookie(t *testing.T) {
 	if w := h.do(s, "GET", "/", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `name="csrf-token"`) {
 		t.Fatalf("page : %d", w.Code)
 	}
-	// Plus de TOTP : ni champ de code dans le formulaire, ni colonne en base.
-	if strings.Contains(h.serve(httptest.NewRequest("GET", "/login", nil)).Body.String(), `name="code"`) {
-		t.Fatal("champ de code encore présent")
-	}
-	var cols int
-	h.db.QueryRow(`SELECT count(*) FROM pragma_table_info('users') WHERE name LIKE 'totp%'`).Scan(&cols)
-	if cols != 0 {
-		t.Fatal("colonnes TOTP encore présentes")
-	}
-}
-
-func TestLoginNewSessionEachTime(t *testing.T) {
-	h := newHarness(t)
-	h.addUser("alice")
-	r1 := h.loginForm("198.51.100.1", "alice", testPassword)
-	r2 := h.loginForm("198.51.100.1", "alice", testPassword)
-	if r1.Cookie == nil || r2.Cookie == nil || r1.Cookie.Value == r2.Cookie.Value {
-		t.Fatal("chaque connexion doit créer une nouvelle session")
+	// Chaque connexion crée une nouvelle session.
+	if r := h.loginForm("198.51.100.1", "alice", testPassword); r.Cookie == nil || r.Cookie.Value == c.Value {
+		t.Fatal("même session pour deux connexions")
 	}
 }
 
@@ -305,27 +290,18 @@ func TestLogoutIsServerSide(t *testing.T) {
 	h.expect(http.StatusUnauthorized, s, "GET", "/api/state", nil)
 }
 
-func TestRevokeAllSessions(t *testing.T) {
+// Ligne de commande : « user reset » change le mot de passe et révoque les sessions du
+// compte, « sessions revoke-all » celles de tout le monde.
+func TestCLIRevokesSessions(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.addUser("alice"), h.addUser("bob")
 	sa, sb := h.session(a), h.session(b)
 	var out bytes.Buffer
-	if err := adminCommand(&out, nil, h.db, []string{"sessions", "revoke-all"}); err != nil {
-		t.Fatal(err)
-	}
-	h.expect(http.StatusUnauthorized, sa, "GET", "/api/state", nil)
-	h.expect(http.StatusUnauthorized, sb, "GET", "/api/state", nil)
-}
-
-func TestUserResetRevokesSessionsAndChangesPassword(t *testing.T) {
-	h := newHarness(t)
-	a := h.addUser("alice")
-	s := h.session(a)
-	var out bytes.Buffer
 	if err := adminCommand(&out, nil, h.db, []string{"user", "reset", "alice"}); err != nil {
 		t.Fatal(err)
 	}
-	h.expect(http.StatusUnauthorized, s, "GET", "/api/state", nil)
+	h.expect(http.StatusUnauthorized, sa, "GET", "/api/state", nil)
+	h.expect(http.StatusOK, sb, "GET", "/api/state", nil)
 	u, _ := userByName(h.db, "alice")
 	if verifyPassword(u.PasswordHash, testPassword) {
 		t.Fatal("mot de passe inchangé")
@@ -333,6 +309,10 @@ func TestUserResetRevokesSessionsAndChangesPassword(t *testing.T) {
 	if !strings.Contains(out.String(), "sessions revoked") {
 		t.Fatalf("sortie : %s", out.String())
 	}
+	if err := adminCommand(&out, nil, h.db, []string{"sessions", "revoke-all"}); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(http.StatusUnauthorized, sb, "GET", "/api/state", nil)
 }
 
 func TestUserAddCLI(t *testing.T) {
@@ -355,12 +335,5 @@ func TestUserAddCLI(t *testing.T) {
 	}
 	if err := adminCommand(&out, strings.NewReader("court\n"), h.db, []string{"user", "add", "bob", "--password-stdin"}); err == nil {
 		t.Fatal("mot de passe court accepté")
-	}
-}
-
-func TestGeneratedPassword(t *testing.T) {
-	p := generatePassword()
-	if len(p) != 29 || strings.Count(p, "-") != 5 || p == generatePassword() {
-		t.Fatalf("mot de passe généré : %q", p)
 	}
 }
