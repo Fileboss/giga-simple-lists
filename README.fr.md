@@ -313,6 +313,22 @@ lance `gofmt`, `go vet`, `go test -race`, `govulncheck` (aussi chaque nuit) et v
 de chaque plateforme fait moins de 20 Mo avant de la publier. Les traductions sont dans
 [`app/i18n.go`](app/i18n.go) ; un test vérifie que chaque langue a toutes les clés.
 
+## Architecture
+
+Navigateurs et clients de l'API n'atteignent l'appli qu'à travers le reverse proxy (et, en option,
+un proxy d'authentification). L'appli est un seul binaire Go dans un conteneur en lecture seule,
+avec un seul fichier SQLite sur son volume, et n'ouvre aucune connexion sortante.
+
+![Schéma d'architecture : membres et invités utilisent un navigateur ou l'appli installée, qui parle au reverse proxy en HTTPS et SSE ; Home Assistant ou un raccourci envoie à /api/v1 avec un jeton ; le reverse proxy consulte éventuellement un proxy d'authentification, puis transmet à l'appli Go sur le port 5240, qui lit et écrit le fichier SQLite ; un admin passe par la ligne de commande avec docker exec](docs/diagrams/system-design.svg)
+
+### Modèle de données
+
+Chaque liste a un propriétaire et peut être partagée avec tous les comptes (`shared`) ou avec des
+comptes choisis (`list_members`, « shared with » ci-dessous) ; ses éléments la suivent. Les jetons
+(session, invitation, API) ne sont stockés que hachés.
+
+![Modèle de données (MCD Merise) : un User ouvre des Sessions, détient au plus un ApiToken, possède des Lists, est membre des Lists partagées avec lui, a modifié en dernier des Items, crée des Invitations et est la cible des Invitations de réinitialisation ; une List contient des Items ; LoginAttempt est à part, indexé par IP ou par compte](docs/diagrams/data-model.svg)
+
 ## Points de conception
 
 - **Accès** : une seule règle, `visibleTo` (propriétaire, liste partagée avec tout le monde, ou

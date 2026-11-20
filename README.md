@@ -352,6 +352,22 @@ nightly) and checks that each platform's image is under 20 MB before publishing 
 Code comments are in French. Translations live in [`app/i18n.go`](app/i18n.go); a test checks that
 every language has every key.
 
+## Architecture
+
+Browsers and API clients reach the app only through the reverse proxy (and, optionally, an
+authentication proxy). The app is one Go binary in a read-only container, with a single SQLite file
+on its volume, and makes no outgoing connection.
+
+![System design: members and guests use a browser or the installable web app, which talks to the reverse proxy over HTTPS and SSE; Home Assistant or a phone shortcut posts to /api/v1 with a token; the reverse proxy optionally asks an authentication proxy, then forwards to the Go app on port 5240, which reads and writes the SQLite file; an admin uses the command line through docker exec](docs/diagrams/system-design.svg)
+
+### Data model
+
+Every list has one owner and can be shared with every account (`shared`) or with chosen accounts
+(`list_members`, "shared with" below); its items follow it. Tokens (session, invitation, API) are
+only stored as hashes.
+
+![Data model (Merise MCD): a User opens Sessions, holds at most one ApiToken, owns Lists, is a member of Lists shared with them, last edited Items, creates Invitations and is the target of reset Invitations; a List contains Items; LoginAttempt stands alone, keyed by IP or account](docs/diagrams/data-model.svg)
+
 ## Design notes
 
 - **Access**: a single rule, `visibleTo` (owner, list shared with everyone, or member of the
